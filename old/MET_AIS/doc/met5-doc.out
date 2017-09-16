@@ -1,0 +1,72 @@
+\BOOKMARK [0][-]{chapter.1}{Introduction}{}% 1
+\BOOKMARK [1][-]{section.1.1}{Goal of this document}{chapter.1}% 2
+\BOOKMARK [1][-]{section.1.2}{met5gui framework}{chapter.1}% 3
+\BOOKMARK [1][-]{section.1.3}{Inspirations}{chapter.1}% 4
+\BOOKMARK [2][-]{subsection.1.3.1}{Coding guidelines}{section.1.3}% 5
+\BOOKMARK [2][-]{subsection.1.3.2}{Commmon API components}{section.1.3}% 6
+\BOOKMARK [2][-]{subsection.1.3.3}{Previous tools' software}{section.1.3}% 7
+\BOOKMARK [1][-]{section.1.4}{User experience}{chapter.1}% 8
+\BOOKMARK [2][-]{subsection.1.4.1}{Standardizing API for Matlab}{section.1.4}% 9
+\BOOKMARK [2][-]{subsection.1.4.2}{Matlab class breakdown}{section.1.4}% 10
+\BOOKMARK [1][-]{section.1.5}{History}{chapter.1}% 11
+\BOOKMARK [2][-]{subsection.1.5.1}{The choice of Matlab}{section.1.5}% 12
+\BOOKMARK [2][-]{subsection.1.5.2}{Controllers in Java}{section.1.5}% 13
+\BOOKMARK [2][-]{subsection.1.5.3}{Initial Timeline}{section.1.5}% 14
+\BOOKMARK [1][-]{section.1.6}{System integration}{chapter.1}% 15
+\BOOKMARK [2][-]{subsection.1.6.1}{EPS and kill switches}{section.1.6}% 16
+\BOOKMARK [2][-]{subsection.1.6.2}{Feedback loops}{section.1.6}% 17
+\BOOKMARK [2][-]{subsection.1.6.3}{Compound measurements}{section.1.6}% 18
+\BOOKMARK [2][-]{subsection.1.6.4}{Kinematics}{section.1.6}% 19
+\BOOKMARK [2][-]{subsection.1.6.5}{Major shifts}{section.1.6}% 20
+\BOOKMARK [2][-]{subsection.1.6.6}{Wrapping UIElements}{section.1.6}% 21
+\BOOKMARK [2][-]{subsection.1.6.7}{A Clock to rule them all}{section.1.6}% 22
+\BOOKMARK [2][-]{subsection.1.6.8}{Return of experiment}{section.1.6}% 23
+\BOOKMARK [0][-]{chapter.2}{Implementation \046 Conventions}{}% 24
+\BOOKMARK [1][-]{section.2.1}{Software structure}{chapter.2}% 25
+\BOOKMARK [1][-]{section.2.2}{Naming conventions}{chapter.2}% 26
+\BOOKMARK [1][-]{section.2.3}{Matlab compliance}{chapter.2}% 27
+\BOOKMARK [0][-]{chapter.3}{Documentation}{}% 28
+\BOOKMARK [1][-]{section.3.1}{Clock}{chapter.3}% 29
+\BOOKMARK [1][-]{section.3.2}{Instrument control}{chapter.3}% 30
+\BOOKMARK [2][-]{subsection.3.2.1}{Axis}{section.3.2}% 31
+\BOOKMARK [2][-]{subsection.3.2.2}{Diode}{section.3.2}% 32
+\BOOKMARK [2][-]{subsection.3.2.3}{DiodeAPI}{section.3.2}% 33
+\BOOKMARK [2][-]{subsection.3.2.4}{HardwareIO}{section.3.2}% 34
+\BOOKMARK [2][-]{subsection.3.2.5}{HardwareO}{section.3.2}% 35
+\BOOKMARK [2][-]{subsection.3.2.6}{Shutter}{section.3.2}% 36
+\BOOKMARK [2][-]{subsection.3.2.7}{Camera}{section.3.2}% 37
+\BOOKMARK [2][-]{subsection.3.2.8}{Scan}{section.3.2}% 38
+\BOOKMARK [2][-]{subsection.3.2.9}{Monitor}{section.3.2}% 39
+\BOOKMARK [1][-]{section.3.3}{API \046 wrappers}{chapter.3}% 40
+\BOOKMARK [2][-]{subsection.3.3.1}{nPoint}{section.3.3}% 41
+\BOOKMARK [2][-]{subsection.3.3.2}{APIVHardwareIO}{section.3.3}% 42
+\BOOKMARK [2][-]{subsection.3.3.3}{APIHardwareIOnPoint}{section.3.3}% 43
+\BOOKMARK [2][-]{subsection.3.3.4}{ConfigMotor}{section.3.3}% 44
+\BOOKMARK [1][-]{section.3.4}{UI elements}{chapter.3}% 45
+\BOOKMARK [2][-]{subsection.3.4.1}{UIEdit}{section.3.4}% 46
+\BOOKMARK [2][-]{subsection.3.4.2}{UIButton}{section.3.4}% 47
+\BOOKMARK [2][-]{subsection.3.4.3}{UIList}{section.3.4}% 48
+\BOOKMARK [2][-]{subsection.3.4.4}{UIText}{section.3.4}% 49
+\BOOKMARK [2][-]{subsection.3.4.5}{UICheckbox}{section.3.4}% 50
+\BOOKMARK [2][-]{subsection.3.4.6}{UIToggle}{section.3.4}% 51
+\BOOKMARK [2][-]{subsection.3.4.7}{UIPopup}{section.3.4}% 52
+\BOOKMARK [2][-]{subsection.3.4.8}{UI2DNav}{section.3.4}% 53
+\BOOKMARK [2][-]{subsection.3.4.9}{List}{section.3.4}% 54
+\BOOKMARK [2][-]{subsection.3.4.10}{Panel}{section.3.4}% 55
+\BOOKMARK [2][-]{subsection.3.4.11}{Utils}{section.3.4}% 56
+\BOOKMARK [1][-]{section.3.5}{Controls}{chapter.3}% 57
+\BOOKMARK [2][-]{subsection.3.5.1}{Mirror}{section.3.5}% 58
+\BOOKMARK [2][-]{subsection.3.5.2}{ReticlePick}{section.3.5}% 59
+\BOOKMARK [2][-]{subsection.3.5.3}{PupilFill}{section.3.5}% 60
+\BOOKMARK [2][-]{subsection.3.5.4}{HeightSensor}{section.3.5}% 61
+\BOOKMARK [1][-]{section.3.6}{Debugging and examples}{chapter.3}% 62
+\BOOKMARK [0][-]{chapter.4}{Room for improvement}{}% 63
+\BOOKMARK [0][-]{chapter.5}{Annex}{}% 64
+\BOOKMARK [1][-]{section.5.1}{Newport ESP300 controller - 3-axes linear stage controller}{chapter.5}% 65
+\BOOKMARK [1][-]{section.5.2}{SmarAct MCS 3-Axes Piezo motor controller}{chapter.5}% 66
+\BOOKMARK [1][-]{section.5.3}{Stanford Research Systems SR830 DSP Lock-In Amplifier}{chapter.5}% 67
+\BOOKMARK [1][-]{section.5.4}{GalilAxisVT50}{chapter.5}% 68
+\BOOKMARK [1][-]{section.5.5}{Micos PMC100}{chapter.5}% 69
+\BOOKMARK [1][-]{section.5.6}{Mirrorcle}{chapter.5}% 70
+\BOOKMARK [1][-]{section.5.7}{Wago}{chapter.5}% 71
+\BOOKMARK [1][-]{section.5.8}{PaulBox}{chapter.5}% 72
