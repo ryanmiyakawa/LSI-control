@@ -1,7 +1,7 @@
-classdef HexapodAxisBridge < mic.interface.device.GetSetNumber
+classdef GoniAxisBridge < mic.interface.device.GetSetNumber
 
     % This class acts as a bridge between the UI getsetnumber element and
-    % a hexapod axis.  
+    % a goni axis.  
     
     
     % This class implements mic.interface.device.GetSetNumber, which is the
@@ -9,21 +9,22 @@ classdef HexapodAxisBridge < mic.interface.device.GetSetNumber
     % "device" to implement.  
     
     properties (Constant)
-        INTRINSIC_R   = [[-1 0 0 ; 0 0 1; 0 1 0], zeros(3); zeros(3), [-1 0 0 ; 0 0 1; 0 1 0]];    
+        INTRINSIC_R = eye(2);
     end
+    
     
     properties (Access = private)
         
         % {VendorDevice 1x1}
-        hexapodStageAPI
-        R = eye(6);
+        goniStageAPI
         dAxisNumber
+        R = eye(2);
     end
     
     methods
         
-        function this = HexapodAxisBridge(hexapodStageAPI, axisNumber)
-            this.hexapodStageAPI = hexapodStageAPI;
+        function this = GoniAxisBridge(goniStageAPI, axisNumber)
+            this.goniStageAPI = goniStageAPI;
             this.dAxisNumber = axisNumber;
         end
         
@@ -32,36 +33,36 @@ classdef HexapodAxisBridge < mic.interface.device.GetSetNumber
         end
         
         function d = get(this)
-            dPosAr = this.R*this.INTRINSIC_R*(this.hexapodStageAPI.getAxesPosition()); % Rotate from hexapod coordinates to GUI coordinates
+            dPosAr = this.R*this.INTRINSIC_R*(this.goniStageAPI.getAxesPosition()); % Rotate from goni coordinates to GUI coordinates
             d = dPosAr(this.dAxisNumber);
             
         end
         
         function set(this, dVal)
-            dPosAr = this.R*this.INTRINSIC_R*(this.hexapodStageAPI.getAxesPosition());% Rotate from hexapod coordinates to GUI coordinates
+            dPosAr = this.R*this.INTRINSIC_R*(this.goniStageAPI.getAxesPosition());% Rotate from goni coordinates to GUI coordinates
             dPosAr(this.dAxisNumber) = dVal; % Set value into GUI coordinates
             
-            % Set 6-vector in hexapod coordinates
-            this.hexapodStageAPI.setAxesPosition(...
+            % Set 6-vector in goni coordinates
+            this.goniStageAPI.setAxesPosition(...
                         this.INTRINSIC_R\(this.R\dPosAr) ...
                         );
         end
         
         function l = isReady(this)
-            l = this.hexapodStageAPI.isReady();
+            l = this.goniStageAPI.isReady();
         end
         
         function stop(this)
-             this.hexapodStageAPI.stop();
+             this.goniStageAPI.stop();
         end
         
         % This will home the stage
         function initialize(this)
-             this.hexapodStageAPI.home();
+             this.goniStageAPI.home();
         end
         
         function l = isInitialized(this)
-            l = this.hexapodStageAPI.isInitialized();
+            l = this.goniStageAPI.isInitialized();
         end
         
         

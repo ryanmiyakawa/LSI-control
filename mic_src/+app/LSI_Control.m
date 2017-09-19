@@ -1,4 +1,4 @@
-classdef ZTS_Control < handle
+classdef LSI_Control < handle
     
     
     properties
@@ -9,15 +9,19 @@ classdef ZTS_Control < handle
         
         % Stages
         uiDeviceArrayHexapod
+        uiDeviceArrayGoni
         
         % Bridges
         oHexapodBridges
+        oGoniBridges
         
         uibConnectHexapod
         uibHomeHexapod
         
-        % Stage API:
-        spaceFabAPI
+        % APIs:
+        hexapodAPI
+        goniAPI
+        cameraAPI
         
         % Camera
         uiDeviceCameraTemperature
@@ -64,6 +68,7 @@ classdef ZTS_Control < handle
         dMultiAxisSeparation = 50;
         
         cHexapodAxisLabels = {'X', 'Y', 'Z', 'Rx', 'Ry', 'Rz'};
+        cGoniLabels = {'Rx', 'Ry'};
     end
     
     properties (Access = private)
@@ -72,7 +77,7 @@ classdef ZTS_Control < handle
     
     methods
         
-        function this = ZTS_Control()
+        function this = LSI_Control()
             
             
             this.initClock();
@@ -103,6 +108,11 @@ classdef ZTS_Control < handle
                     'cPath', fullfile(this.cConfigPath, sprintf('hex%d.json', k))...
                     );
             end
+            for k = 1:2
+                this.uicGoniConfigs{k} = mic.config.GetSetNumber(...
+                    'cPath', fullfile(this.cConfigPath, sprintf('goni%d.json', k))...
+                    );
+            end
             
             this.uicTemperatureConfig = mic.config.GetSetNumber(...
                     'cPath', fullfile(this.cConfigPath, 'temp.json')...
@@ -131,7 +141,17 @@ classdef ZTS_Control < handle
                 );
             end
             
-           
+           for k = 1:length(this.cGoniLabels)
+                this.uiDeviceArrayGoni{k} = mic.ui.device.GetSetNumber( ...
+                    'cName', this.cGoniLabels{k}, ...
+                    'clock', this.clock, ...
+                    'cLabel', this.cGoniLabels{k}, ...
+                    'lShowLabels', false, ...
+                    'lShowStores', false, ...
+                    'lValidateByConfigRange', true, ...
+                    'config', this.uicGoniConfigs{k} ...
+                );
+            end
             
             
 
@@ -241,15 +261,21 @@ classdef ZTS_Control < handle
             % Link devices here
             
             % First get master SpaceFab API:
-            this.spaceFabAPI = app.device.APISpaceFab();
+            this.hexapodAPI 	= app.device.APISmarPod();
+            this.goniAPI        = app.device.APIGoni();
             
             % Use Hexapod "bridge" to create single axis control
             for k = 1:6
-                this.oHexapodBridges{k} = app.device.HexapodAxisBridge(this.spaceFabAPI, k);
+                this.oHexapodBridges{k} = app.device.HexapodAxisBridge(this.hexapodAPI, k);
                 this.uiDeviceArrayHexapod{k}.setDevice(this.oHexapodBridges{k});
             end
+            
+            % Use Goni "bridge" to create single axis control
+            for k = 1:2
+                this.oGoniBridges{k} = app.device.GoniAxisBridge(this.goniAPI, k);
+                this.uiDeviceArrayGoni{k}.setDevice(this.oGoniBridges{k});
+            end
                         
-%             this.vendorDevice = VendorDevice();
             
             % You can store a reference to these devices you want but there
             % is no need since you can access thrm through the
