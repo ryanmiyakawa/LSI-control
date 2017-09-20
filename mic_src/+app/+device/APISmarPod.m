@@ -19,36 +19,17 @@ classdef APISmarPod < app.javaAPI.CXROJavaStageAPI
 
     methods 
         
-        function this = APISmarPod()
-        % This API should be instatiated once, and only once, to avoid 
-        % instabilities
-        
+        function this = APISmarPod(hInstruments)
+            this.hInstruments = hInstruments;
             this.init();
         end
         
         function init(this)
-        %INIT Loads the library and initializes the connection to the stage
-        %   api.init()
-        %
-        % See also CONNECT, DELETE
+        end
         
-            %Always make sure you're in the right folder : Matlab crash o/w
-            path = pwd;
-            
-            %load the library
-            javaclasspath(strcat(path,...
-                filesep,'Met5Instruments.jar'));
-            import cxro.met5.Instruments.*;
-            import java.util.concurrent.Future;
-            
-            % instruments:
-            this.hInstruments = cxro.met5.Instruments();
-            %connect to the stage
-            this.connect(this.hInstruments);
-            this.jStage = instruments.getLsiHexapod();
+        function connect(this)
+            this.jStage = this.hInstruments.getLsiHexapod();
             this.jStage.connect();
-            
-            
         end
               
 

@@ -19,38 +19,20 @@ classdef APIGoni < app.javaAPI.CXROJavaStageAPI
 
     methods 
         
-        function this = APIGoni()
+        function this = APIGoni(hInstruments)
         % This API should be instatiated once, and only once, to avoid 
         % instabilities
-        
+            this.hInstruments = hInstruments;
             this.init();
         end
         
         function init(this)
-        %INIT Loads the library and initializes the connection to the stage
-        %   api.init()
-        %
-        % See also CONNECT, DELETE
-        
-            %Always make sure you're in the right folder : Matlab crash o/w
-            path = pwd;
-            
-            %load the library
-            javaclasspath(strcat(path,...
-                filesep,'Met5Instruments.jar'));
-            import cxro.met5.Instruments.*;
-            import java.util.concurrent.Future;
-            
-            % instruments:
-            this.hInstruments = cxro.met5.Instruments();
-            %connect to the stage
-            this.connect(this.hInstruments);
-            this.jStage = instruments.getLsiGoniometer();
-            this.jStage.connect();
-            
-            
         end
-              
+        
+        function connect(this)
+            this.jStage = this.hInstruments.getLsiGoniometer();
+            this.jStage.connect();
+        end
 
 
     end

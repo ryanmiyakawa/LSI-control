@@ -96,6 +96,8 @@ classdef LSI_Control < handle
             this.initConfig();
             this.initUi();
             
+            this.addUiListeners();
+            this.setUiTooltips();
             this.initDevices();
             this.build();
             
@@ -336,7 +338,7 @@ classdef LSI_Control < handle
                 'Title', 'Stage control',...
                 'FontWeight', 'Bold',...
                 'Clipping', 'on',...
-                'Position', [20 400 720 440] ...
+                'Position', [40 400 720 440] ...
             );
         
             % Scan control panel:
@@ -346,7 +348,7 @@ classdef LSI_Control < handle
                 'Title', 'Position recall and coordinate transform',...
                 'FontWeight', 'Bold',...
                 'Clipping', 'on',...
-                'Position', [20 20 720 360] ...
+                'Position', [40 20 720 360] ...
                 );
         
             % Camera control panel:
@@ -370,7 +372,7 @@ classdef LSI_Control < handle
 %                 );
                 
             % Position recall:
-            this.uiSaveLoadUI.build(this.hpPositionRecall, 10, 10, 350, 270);
+            this.uiSaveLoadUI.build(this.hpPositionRecall, 10, 10);
             
             
             
@@ -390,11 +392,11 @@ classdef LSI_Control < handle
             
            
             
-            this.uibConnectHexapod.build(this.hpStageControls, 510, 40, 95, 40);
-            this.uibConnectGoni.build(this.hpStageControls, 615, 40, 95, 40);
+            this.uibConnectHexapod.build(this.hpStageControls, 540, 40, 70, 40);
+            this.uibConnectGoni.build(this.hpStageControls, 620, 90, 70, 40);
             
-            this.uibHomeHexapod.build(this.hpStageControls, 510, 500, 95, 40);
-            this.uibHomeGoni.build(this.hpStageControls, 615, 500, 95, 40);
+            this.uibHomeHexapod.build(this.hpStageControls, 540, 40, 100, 40);
+            this.uibHomeGoni.build(this.hpStageControls, 540, 40, 100, 40);
             
             
            % this.uibRotateCoordinates.build(this.hpStageControls, 600, 130, 100, 40);
@@ -403,7 +405,7 @@ classdef LSI_Control < handle
             this.uiDeviceCameraTemperature.build(this.hpCameraControls, 20, 20);            
             this.uiDeviceCameraExposureTime.build(this.hpCameraControls, 20, 70);
             
-%             this.uiFileWatcher.build(this.hpCameraControls, 20, 55);
+            this.uiFileWatcher.build(this.hpCameraControls, 20, 55);
 
             this.uiButtonFocus.build(this.hpCameraControls, 20, 150, 120, 40);
             this.uiButtonAcquire.build(this.hpCameraControls, 160, 150, 120, 40);

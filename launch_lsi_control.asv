@@ -14,6 +14,6 @@ cDirSrc = fullfile(cDirThis, 'mic_src');
 addpath(genpath(cDirSrc));
 
 purge
-cJavaLibPath = pwd;
+cJavaLibPath = 
 app = app.LSI_Control();
 
