@@ -15,19 +15,24 @@ classdef LSI_Control < handle
         % Stages
         uiDeviceArrayHexapod
         uiDeviceArrayGoni
+        uiDeviceArrayReticle
         
         % Bridges
         oHexapodBridges
         oGoniBridges
+        oReticleBridges
         
         uibConnectHexapod
         uibConnectGoni
+        uibConnectReticle
         uibHomeHexapod
         uibHomeGoni
+        uibHomeReticle
         
         % APIs:
         apiHexapod
         apiGoni
+        apiReticle
         cameraAPI
         
         % Camera
@@ -72,10 +77,11 @@ classdef LSI_Control < handle
         dWidth  = 1440;
         dHeight =  860;
         
-        dMultiAxisSeparation = 40;
+        dMultiAxisSeparation = 30;
         
         cHexapodAxisLabels = {'X', 'Y', 'Z', 'Rx', 'Ry', 'Rz'};
         cGoniLabels = {'Goni-Rx', 'Goni-Ry'};
+        cReticleLabels = {'Ret-X', 'Ret-Y', 'Ret-Z'};
     end
     
     properties (Access = private)
@@ -134,6 +140,11 @@ classdef LSI_Control < handle
                     'cPath', fullfile(this.cConfigPath, sprintf('goni%d.json', k))...
                     );
             end
+            for k = 1:3
+                this.uicReticleConfigs{k} = mic.config.GetSetNumber(...
+                    'cPath', fullfile(this.cConfigPath, sprintf('reticle%d.json', k))...
+                    );
+            end
             
             this.uicTemperatureConfig = mic.config.GetSetNumber(...
                     'cPath', fullfile(this.cConfigPath, 'temp.json')...
@@ -171,8 +182,20 @@ classdef LSI_Control < handle
                     'lShowStores', false, ...
                     'lValidateByConfigRange', true, ...
                     'config', this.uicGoniConfigs{k} ...
-                );
-            end
+                    );
+           end
+           
+           for k = 1:length(this.cReticleLabels)
+               this.uiDeviceArrayReticle{k} = mic.ui.device.GetSetNumber( ...
+                   'cName', this.cReticleLabels{k}, ...
+                   'clock', this.clock, ...
+                   'cLabel', this.cReticleLabels{k}, ...
+                   'lShowLabels', false, ...
+                   'lShowStores', false, ...
+                   'lValidateByConfigRange', true, ...
+                   'config', this.uicReticleConfigs{k} ...
+                   );
+           end
             
             
 
@@ -219,11 +242,19 @@ classdef LSI_Control < handle
             this.uibHomeGoni = mic.ui.common.Button(...
                 'cText', 'Home Goni' , 'fhDirectCallback', @(src,evt)this.homeGoni ...
             );
+            this.uibHomeReticle = mic.ui.common.Button(...
+                'cText', 'Home Reticle' , 'fhDirectCallback', @(src,evt)this.homeReticle ...
+            );
+        
+        
             this.uibConnectHexapod = mic.ui.common.Button(...
                 'cText', 'Connect Hexapod' , 'fhDirectCallback', @(src,evt)this.connectHexapod ...
             );
             this.uibConnectGoni = mic.ui.common.Button(...
                 'cText', 'Connect Goni' , 'fhDirectCallback', @(src,evt)this.connectGoni ...
+            );
+            this.uibConnectReticle = mic.ui.common.Button(...
+                'cText', 'Connect Reticle' , 'fhDirectCallback', @(src,evt)this.connectReticle ...
             );
         
             this.uiFileWatcher = mic.ui.common.FileWatcher(...
@@ -284,34 +315,29 @@ classdef LSI_Control < handle
             % Build device APIs
             this.apiHexapod 	= app.device.APISmarPod(this.hInstruments);
             this.apiGoni        = app.device.APIGoni(this.hInstruments);
+            this.apiReticle     = app.device.APIReticle(this.hInstruments);
             
-            % Use Hexapod "bridge" to create single axis control
+            % Use coupled-axis bridge to create single axis control
+            dHexapodR = [[-1 0 0 ; 0 0 1; 0 1 0], zeros(3); zeros(3), [-1 0 0 ; 0 0 1; 0 1 0]];  
             for k = 1:6
-                this.oHexapodBridges{k} = app.device.HexapodAxisBridge(this.apiHexapod, k);
+                this.oHexapodBridges{k} = app.device.CoupledAxisBridge(this.apiHexapod, k, 6);
+                this.oHexapodBridges{k}.setR(dHexapodR);
                 this.uiDeviceArrayHexapod{k}.setDevice(this.oHexapodBridges{k});
             end
             
-            % Use Goni "bridge" to create single axis control
+             % Use coupled-axis bridge to create single axis control
             for k = 1:2
-                this.oGoniBridges{k} = app.device.GoniAxisBridge(this.apiGoni, k);
+                this.oGoniBridges{k} = app.device.CoupledAxisBridge(this.apiGoni, k, 2);
                 this.uiDeviceArrayGoni{k}.setDevice(this.oGoniBridges{k});
             end
+            
+            % Use coupled-axis bridge to create single axis control
+            for k = 1:3
+                this.oReticleBridges{k} = app.device.CoupledAxisBridge(this.apiReticle, k, 3);
+                this.uiDeviceArrayReticle{k}.setDevice(this.oReticleBridges{k});
+            end
                         
-            
-            % You can store a reference to these devices you want but there
-            % is no need since you can access thrm through the
-            % mic.ui.device.*
 
-%             getSetNumberX = app.device.VendorDevice2GetSetNumber(this.vendorDevice, 'x');
-%             getSetNumberY = app.device.VendorDevice2GetSetNumber(this.vendorDevice, 'y');
-%             getTextMode = app.device.VendorDevice2GetText(this.vendorDevice, 'mode');
-%             getSetLogicalAwesome = app.device.VendorDevice2GetSetLogical(this.vendorDevice, 'awesome');
-% 
-%             this.uiDeviceX.setDevice(getSetNumberX);
-%             this.uiDeviceY.setDevice(getSetNumberY);
-%             this.uiDeviceMode.setDevice(getTextMode);
-%             this.uiDeviceAwesome.setDevice(getSetLogicalAwesome);
-            
         end
         
         function build(this)
@@ -376,25 +402,38 @@ classdef LSI_Control < handle
             
             % Stage UI elements
             dAxisPos = 40;
+            dH1 = dAxisPos;
             for k = 1:length(this.cHexapodAxisLabels)
                 this.uiDeviceArrayHexapod{k}.build(this.hpStageControls, ...
                     40, dAxisPos);
                 dAxisPos = dAxisPos + this.dMultiAxisSeparation;
             end
-            dAxisPos = dAxisPos + 30;
+            dAxisPos = dAxisPos + 20;
+            dH2 = dAxisPos;
             for k = 1:length(this.cGoniLabels)
                 this.uiDeviceArrayGoni{k}.build(this.hpStageControls, ...
+                    40, dAxisPos);
+                dAxisPos = dAxisPos + this.dMultiAxisSeparation;
+            end
+            dAxisPos = dAxisPos + 20;
+             dH3 = dAxisPos;
+             for k = 1:length(this.cReticleLabels)
+                this.uiDeviceArrayReticle{k}.build(this.hpStageControls, ...
                     40, dAxisPos);
                 dAxisPos = dAxisPos + this.dMultiAxisSeparation;
             end
             
            
             
-            this.uibConnectHexapod.build(this.hpStageControls, 510, 40, 95, 40);
-            this.uibConnectGoni.build(this.hpStageControls, 615, 40, 95, 40);
+            this.uibConnectHexapod.build(this.hpStageControls, 510, dH1, 95, 40);
+            this.uibHomeHexapod.build(this.hpStageControls, 615, dH1, 95, 40);
             
-            this.uibHomeHexapod.build(this.hpStageControls, 510, 500, 95, 40);
-            this.uibHomeGoni.build(this.hpStageControls, 615, 500, 95, 40);
+            this.uibConnectGoni.build(this.hpStageControls, 510, dH2, 95, 40);
+            this.uibHomeGoni.build(this.hpStageControls, 615, dH2, 95, 40);
+            
+           
+            this.uibConnectReticle.build(this.hpStageControls, 510, dH3, 95, 40);
+            this.uibHomeReticle.build(this.hpStageControls, 615, dH3, 95, 40);
             
             
            % this.uibRotateCoordinates.build(this.hpStageControls, 600, 130, 100, 40);
@@ -421,14 +460,20 @@ classdef LSI_Control < handle
         end
         
         function homeHexapod(this)
-            if strcmp(questdlg('Would you like to home the stage?'), 'Yes')
+            if strcmp(questdlg('Would you like to home the Hexapod?'), 'Yes')
                 this.apiHexapod.home();
             end
         end
         
-         function homeGoni(this)
-            if strcmp(questdlg('Would you like to home the stage?'), 'Yes')
+        function homeGoni(this)
+            if strcmp(questdlg('Would you like to home the Goniometer?'), 'Yes')
                 this.apiGoni.home();
+            end
+        end
+        
+         function homeReticle(this)
+            if strcmp(questdlg('Would you like to home the Reticle?'), 'Yes')
+                this.apiReticle.home();
             end
         end
         
@@ -449,6 +494,17 @@ classdef LSI_Control < handle
                 for k = 1:2
                      this.uiDeviceArrayGoni{k}.turnOn();
                      this.uiDeviceArrayGoni{k}.syncDestination();
+                end
+            end
+         end
+        
+          % Connnect Goni and enable axes
+         function connectReticle(this)
+            if strcmp(questdlg('Enable Reticle control?'), 'Yes')
+                this.apiReticle.connect();
+                for k = 1:3
+                     this.uiDeviceArrayReticle{k}.turnOn();
+                     this.uiDeviceArrayReticle{k}.syncDestination();
                 end
             end
         end
@@ -474,6 +530,8 @@ classdef LSI_Control < handle
         end
         
         function deleteUi(this)
+            % Stop the clock:
+            this.clock.stop();
                         
             for k = 1:length(this.cHexapodAxisLabels)
                 delete(this.uiDeviceArrayHexapod{k});
