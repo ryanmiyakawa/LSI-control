@@ -15,13 +15,12 @@ classdef APIGoni < app.javaAPI.CXROJavaStageAPI
   
     properties
         hInstruments
+        lIsConnected = false
     end
 
     methods 
         
         function this = APIGoni(hInstruments)
-        % This API should be instatiated once, and only once, to avoid 
-        % instabilities
             this.hInstruments = hInstruments;
             this.init();
         end
@@ -32,6 +31,11 @@ classdef APIGoni < app.javaAPI.CXROJavaStageAPI
         function connect(this)
             this.jStage = this.hInstruments.getLsiGoniometer();
             this.jStage.connect();
+            this.lIsConnected = true;
+        end
+        
+        function lConnected = isConnected(this)
+            lConnected = this.lIsConnected;
         end
 
 

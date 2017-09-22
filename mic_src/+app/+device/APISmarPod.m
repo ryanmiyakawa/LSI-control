@@ -15,6 +15,7 @@ classdef APISmarPod < app.javaAPI.CXROJavaStageAPI
   
     properties
         hInstruments
+        lIsConnected = false;
     end
 
     methods 
@@ -30,8 +31,12 @@ classdef APISmarPod < app.javaAPI.CXROJavaStageAPI
         function connect(this)
             this.jStage = this.hInstruments.getLsiHexapod();
             this.jStage.connect();
+            this.lIsConnected = true;
         end
-              
+        
+        function lConnected = isConnected(this)
+            lConnected = this.lIsConnected;
+        end
 
 
     end

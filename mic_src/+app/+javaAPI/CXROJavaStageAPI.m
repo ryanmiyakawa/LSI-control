@@ -4,6 +4,23 @@
 %
 % In terms of MIC, this can be plugged directly into the UI interface,
 % although for coupled axes, it may require an additional bridge.
+%
+% To defer connection to stage, pass a function handle that can return the
+% stage into the property fhStageGetter.  This allows instances of
+% CXROJavaStageAPI to be created with the ability to defer connection to
+% their stages.
+%
+% General use case for this class is:
+%
+% 1) Instantiate passing either jStage or fhStageGetter (function when
+% called returns stage. Public property isStageDefined will return false
+% until stage is defined.
+%
+% 2) Call connect(): connects to stage, getting stage using fhStageGetter
+% if the stage is not yet defined
+%
+% 3) Stage may need indexing, check with isInitialized(), then use method
+% home() to initialize
 
 
 classdef CXROJavaStageAPI < handle
@@ -12,16 +29,38 @@ classdef CXROJavaStageAPI < handle
                         'STOPPED', 'LOCKED', 'DISABLED', 'UNINITIALIZED', 'DISCONNECTED'};
     end
     properties
-        jStage
+        jStage = []
         cJarPath
+        isStageDefined = false
+        
+        fhStageGetter % Allows for the deferred initialization of stage
     end
     
     methods
         % Constructor:
-        function this = CXROJavaStageAPI()            
+        function this = CXROJavaStageAPI(varargin)
+            for k = 1:2:length(varargin)
+                this.(varargin{k}) = varargin{k+1};
+            end
+            
+            if ~isempty(this.jStage)
+                this.isStageDefined = true;
+            end
+        end
+        
+        function setStage(this, oStage)
+            if isa(oStage, 'function_handle')
+                this.jStage = oStage();
+            else
+                this.jStage = oStage;
+            end
         end
         
         function lOut = connect(this)
+            if isempty(this.jStage)
+                this.jStage = this.fhStageGetter();
+                this.isStageDefined = true;
+            end
             lOut = this.connectStage();
         end
         

@@ -54,7 +54,10 @@ classdef LSI_Control < handle
         uiToggleAll
         uiButtonUseDeviceData
         
-        uiSaveLoadUI
+        uiSLHexapod
+        uiSLGoni
+        uiSLReticle
+        
         
         % Coupled motion parameters
         uieRx
@@ -92,7 +95,7 @@ classdef LSI_Control < handle
         
         function this = LSI_Control(varargin)
             
-            for k = 1:length(varargin)
+            for k = 1:2:length(varargin)
                 this.(varargin{k}) = varargin{k+1};
             end
             
@@ -261,8 +264,9 @@ classdef LSI_Control < handle
                 'hCallback', @(src, p, d)this.fileWatchHandler(src, p, d), ...
                 'clock', this.clock);
 
-            this.uiSaveLoadUI = mic.ui.common.SaveLoadList(...
-                'cConfigPath', fullfile(this.cAppPath, 'config'), ...
+            this.uiSLHexapod = mic.ui.common.PositionRecaller(...
+                'cConfigPath', fullfile(this.cAppPath, '+config'), ...
+                'cName', 'HexapodRecall', ...
                 'hGetCallback', @this.getHexapodRaw, ...
                 'hSetCallback', @this.setHexapodRaw);
 
@@ -270,27 +274,46 @@ classdef LSI_Control < handle
         end
         
         
-        
+        % Sets the raw positions to hexapod.  Used as a handler for
+        % PositionRecaller
         function setHexapodRaw(this, positions) 
-            % Set hexapod positions to saved values
-            this.apiHexapod.setAxesPosition(positions);
             
-            % Wait till hexapod has finished move:
-            for k = 1:20
-                if (this.apiHexapod.isReady())
-                    break;
+            if this.apiHexapod.isConnected()
+                % Set hexapod positions to saved values
+                this.apiHexapod.setAxesPosition(positions);
+
+                % Wait till hexapod has finished move:
+                for k = 1:20
+                    if (this.apiHexapod.isReady())
+                        break;
+                    end
+                    pause(.5)
                 end
-                pause(.5)
-            end
+
+                % Sync edit boxes
+                for k = 1:length(this.cHexapodAxisLabels)
+                    this.uiDeviceArrayHexapod{k}.syncDestination();
+                end
             
-            % Sync edit boxes
-            for k = 1:length(this.cHexapodAxisLabels)
-                this.uiDeviceArrayHexapod{k}.syncDestination();
+            else
+                % If Hexapod is not connected, set GetSetNumber UIs:
+                for k = 1:length(positions)
+                    this.uiDeviceArrayHexapod{k}.setDestRaw(positions(k));
+                    this.uiDeviceArrayHexapod{k}.moveToDest();
+                end
             end
         end
         
+        % Gets the raw positions from hexapod.  Used as a handler for 
+        % PositionRecaller
         function positions = getHexapodRaw(this)
-             positions = this.apiHexapod.getAxesPosition();
+             if this.apiHexapod.isConnected()
+                positions = this.apiHexapod.getAxesPosition();
+             else % get virtual positions from GetSetNumber UIs:
+                 for k = 1:length( this.uiDeviceArrayHexapod)
+                     positions(k) = this.uiDeviceArrayHexapod{k}.getDestRaw(); %#ok<AGROW>
+                 end
+             end
         end
         
         
@@ -313,9 +336,18 @@ classdef LSI_Control < handle
             % Link devices here
             
             % Build device APIs
-            this.apiHexapod 	= app.device.APISmarPod(this.hInstruments);
-            this.apiGoni        = app.device.APIGoni(this.hInstruments);
-            this.apiReticle     = app.device.APIReticle(this.hInstruments);
+%             this.apiHexapod 	= app.device.APISmarPod(this.hInstruments);
+%             this.apiGoni        = app.device.APIGoni(this.hInstruments);
+%             this.apiReticle     = app.device.APIReticle(this.hInstruments);
+
+            % Instantiate javaStageAPIs for communicating with devices
+            this.apiHexapod 	= app.javaAPI.CXROJavaStageAPI(...
+                                  'fhStageGetter',  @() this.hInstruments.getLsiHexapod());
+            this.apiGoni        = app.javaAPI.CXROJavaStageAPI(...
+                                  'fhStageGetter',  @() this.hInstruments.getLsiGoniometer());
+           
+            this.apiReticle     = app.javaAPI.CXROJavaStageAPI(...
+                                  'fhStageGetter',  @() []); % need to plug this in to chris's code
             
             % Use coupled-axis bridge to create single axis control
             dHexapodR = [[-1 0 0 ; 0 0 1; 0 1 0], zeros(3); zeros(3), [-1 0 0 ; 0 0 1; 0 1 0]];  
@@ -396,7 +428,7 @@ classdef LSI_Control < handle
 %                 );
                 
             % Position recall:
-            this.uiSaveLoadUI.build(this.hpPositionRecall, 10, 10, 350, 270);
+            this.uiSLHexapod.build(this.hpPositionRecall, 10, 10, 350, 270);
             
             
             
