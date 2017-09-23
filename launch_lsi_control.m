@@ -1,7 +1,7 @@
 % Open this shortcut from the desktop to make sure that the javapath is
 % initialized in the right director.
 
-addpath('../ryan_toolbox');
+addpath('../../../ryan_toolbox');
 
 [cDirThis, cName, cExt] = fileparts(mfilename('fullpath'));
 
@@ -9,11 +9,11 @@ addpath('../ryan_toolbox');
 cJavaLibPath = pwd;
 
 % mic library
-cDirMic = '../matlab-instrument-control';
+cDirMic = '../../../matlab-instrument-control';
 addpath(genpath(cDirMic));
 
 % example/app src
-cDirSrc = fullfile(cDirThis, 'mic_src');
+cDirSrc = cDirThis;
 addpath(genpath(cDirSrc));
 
 purge
