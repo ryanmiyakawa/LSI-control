@@ -21,5 +21,5 @@ purge
 delete(timerfind)
 
 cJavaLibPath = pwd;
-app = app.LSI_Control('cJavaLibPath', cJavaLibPath);
+app = lsicontrol.ui.LSI_Control('cJavaLibPath', cJavaLibPath);
 

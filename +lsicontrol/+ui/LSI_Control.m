@@ -6,7 +6,7 @@ classdef LSI_Control < handle
         cJavaLibPath = 'C:\Users\cxrodev\Documents\MATLAB\metdev\LSI-control';
         cJavaLibName = 'Met5Instruments.jar';
         cConfigPath
-        clock
+        clock = {}
         vendorDevice
         
         % Instruments handle
@@ -84,7 +84,7 @@ classdef LSI_Control < handle
         
         cHexapodAxisLabels = {'X', 'Y', 'Z', 'Rx', 'Ry', 'Rz'};
         cGoniLabels = {'Goni-Rx', 'Goni-Ry'};
-        cReticleLabels = {'Ret-X', 'Ret-Y', 'Ret-Z'};
+        cReticleLabels = {'Ret-Fine-X', 'Ret-Fine-Y', 'Ret-Coarse-Z'};
     end
     
     properties (Access = private)
@@ -99,8 +99,10 @@ classdef LSI_Control < handle
                 this.(varargin{k}) = varargin{k+1};
             end
             
+            if isempty(this.clock)
+                this.initClock();
+            end
             
-            this.initClock();
             this.initInstruments();
             this.initConfig();
             this.initUi();
@@ -271,14 +273,21 @@ classdef LSI_Control < handle
             this.uiSLGoni = mic.ui.common.PositionRecaller(...
                 'cConfigPath', fullfile(this.cAppPath, '+config'), ...
                 'cName', 'Goni', ...
-                'hGetCallback', @this.getHexapodRaw, ...
-                'hSetCallback', @this.setHexapodRaw);
+                'hGetCallback', @this.getGoniRaw, ...
+                'hSetCallback', @this.setGoniRaw);
             this.uiSLReticle = mic.ui.common.PositionRecaller(...
                 'cConfigPath', fullfile(this.cAppPath, '+config'), ...
                 'cName', 'Reticle', ...
-                'hGetCallback', @this.getHexapodRaw, ...
-                'hSetCallback', @this.setHexapodRaw);
+                'hGetCallback', @this.getReticleRaw, ...
+                'hSetCallback', @this.setReticleRaw);
         
+        end
+        
+        
+        % Need to implement these methods:
+        function getReticleRaw(this)
+        end
+        function setReticleRaw(this, positions)
         end
         
         
@@ -286,7 +295,7 @@ classdef LSI_Control < handle
         % PositionRecaller
         function setHexapodRaw(this, positions) 
             
-            if this.apiHexapod.isConnected()
+            if this.apiHexapod.isStageDefined
                 % Set hexapod positions to saved values
                 this.apiHexapod.setAxesPosition(positions);
 
@@ -315,15 +324,54 @@ classdef LSI_Control < handle
         % Gets the raw positions from hexapod.  Used as a handler for 
         % PositionRecaller
         function positions = getHexapodRaw(this)
-             if this.apiHexapod.isConnected()
+             if this.apiHexapod.isStageDefined
                 positions = this.apiHexapod.getAxesPosition();
              else % get virtual positions from GetSetNumber UIs:
-                 for k = 1:length( this.uiDeviceArrayHexapod)
+                 for k = 1:length(this.uiDeviceArrayHexapod)
                      positions(k) = this.uiDeviceArrayHexapod{k}.getDestRaw(); %#ok<AGROW>
                  end
              end
         end
         
+                % Sets the raw positions to hexapod.  Used as a handler for
+        % PositionRecaller
+        function setGoniRaw(this, positions) 
+            
+            if this.apiGoni.isStageDefined
+                % Set hexapod positions to saved values
+                this.apiGoni.setAxesPosition(positions);
+
+                % Wait till hexapod has finished move:
+                for k = 1:20
+                    if (this.apiGoni.isReady())
+                        break;
+                    end
+                    pause(.5)
+                end
+
+                % Sync edit boxes
+                for k = 1:length(this.cGoniAxisLabels)
+                    this.uiDeviceArrayGoni{k}.syncDestination();
+                end
+            
+            else
+                % If Hexapod is not connected, set GetSetNumber UIs:
+                for k = 1:length(positions)
+                    this.uiDeviceArrayGoni{k}.setDestRaw(positions(k));
+                    this.uiDeviceArrayGoni{k}.moveToDest();
+                end
+            end
+        end
+        
+        function positions = getGoniRaw(this)
+             if this.apiGoni.isStageDefined
+                positions = this.apiGoni.getAxesPosition();
+             else % get virtual positions from GetSetNumber UIs:
+                 for k = 1:length(this.uiDeviceArrayGoni)
+                     positions(k) = this.uiDeviceArrayGoni{k}.getDestRaw(); %#ok<AGROW>
+                 end
+             end
+        end
         
         function launchRotationUI(this)
             rc = mic.ui.common.RotationCorrectionUI('callback', @(Rt, rx, ry)this.rotateCoordinateSystem(Rt, rx, ry));
@@ -344,38 +392,29 @@ classdef LSI_Control < handle
             % Link devices here
             
             % Build device APIs
-%             this.apiHexapod 	= app.device.APISmarPod(this.hInstruments);
-%             this.apiGoni        = app.device.APIGoni(this.hInstruments);
-%             this.apiReticle     = app.device.APIReticle(this.hInstruments);
 
             % Instantiate javaStageAPIs for communicating with devices
-            this.apiHexapod 	= app.javaAPI.CXROJavaStageAPI(...
+            this.apiHexapod 	= lsicontrol.javaAPI.CXROJavaStageAPI(...
                                   'fhStageGetter',  @() this.hInstruments.getLsiHexapod());
-            this.apiGoni        = app.javaAPI.CXROJavaStageAPI(...
+            this.apiGoni        = lsicontrol.javaAPI.CXROJavaStageAPI(...
                                   'fhStageGetter',  @() this.hInstruments.getLsiGoniometer());
            
-            this.apiReticle     = app.javaAPI.CXROJavaStageAPI(...
-                                  'fhStageGetter',  @() []); % need to plug this in to chris's code
             
             % Use coupled-axis bridge to create single axis control
             dHexapodR = [[-1 0 0 ; 0 0 1; 0 1 0], zeros(3); zeros(3), [-1 0 0 ; 0 0 1; 0 1 0]];  
             for k = 1:6
-                this.oHexapodBridges{k} = app.device.CoupledAxisBridge(this.apiHexapod, k, 6);
+                this.oHexapodBridges{k} = lsicontrol.device.CoupledAxisBridge(this.apiHexapod, k, 6);
                 this.oHexapodBridges{k}.setR(dHexapodR);
                 this.uiDeviceArrayHexapod{k}.setDevice(this.oHexapodBridges{k});
             end
             
              % Use coupled-axis bridge to create single axis control
             for k = 1:2
-                this.oGoniBridges{k} = app.device.CoupledAxisBridge(this.apiGoni, k, 2);
+                this.oGoniBridges{k} = lsicontrol.device.CoupledAxisBridge(this.apiGoni, k, 2);
                 this.uiDeviceArrayGoni{k}.setDevice(this.oGoniBridges{k});
             end
             
-            % Use coupled-axis bridge to create single axis control
-            for k = 1:3
-                this.oReticleBridges{k} = app.device.CoupledAxisBridge(this.apiReticle, k, 3);
-                this.uiDeviceArrayReticle{k}.setDevice(this.oReticleBridges{k});
-            end
+
                         
 
         end
