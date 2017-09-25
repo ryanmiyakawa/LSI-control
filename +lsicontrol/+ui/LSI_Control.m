@@ -31,12 +31,9 @@ classdef LSI_Control < handle
         oGoniBridges
         oReticleBridges
         
-        uibConnectHexapod
-        uibConnectGoni
-        uibConnectReticle
+
         uibHomeHexapod
         uibHomeGoni
-        uibHomeReticle
         
         % APIs:
         apiHexapod
@@ -118,7 +115,7 @@ classdef LSI_Control < handle
             this.initComm();
 %             this.initHexapodDevice();
 %             this.initGoniDevice();
-            this.build();
+%             this.build();
             
             %this.loadStateFromDisk();
             
@@ -290,21 +287,9 @@ classdef LSI_Control < handle
             this.uibHomeGoni = mic.ui.common.Button(...
                 'cText', 'Home Goni' , 'fhDirectCallback', @(src,evt)this.homeGoni ...
             );
-            this.uibHomeReticle = mic.ui.common.Button(...
-                'cText', 'Home Reticle' , 'fhDirectCallback', @(src,evt)this.homeReticle ...
-            );
+
         
-        
-            this.uibConnectHexapod = mic.ui.common.Button(...
-                'cText', 'Connect Hexapod' , 'fhDirectCallback', @(src,evt)this.connectHexapod ...
-            );
-            this.uibConnectGoni = mic.ui.common.Button(...
-                'cText', 'Connect Goni' , 'fhDirectCallback', @(src,evt)this.connectGoni ...
-            );
-            this.uibConnectReticle = mic.ui.common.Button(...
-                'cText', 'Connect Reticle' , 'fhDirectCallback', @(src,evt)this.connectReticle ...
-            );
-        
+
 
 
             this.uiSLHexapod = mic.ui.common.PositionRecaller(...
@@ -501,7 +486,7 @@ classdef LSI_Control < handle
                     'Color', [0.7 0.73 0.73]);
                 
            % Main Axes:
-            this.hsaAxes.build(this.hFigure, 770, 300, 650, 580)
+            this.hsaAxes.build(this.hFigure, 880, 165, 540, 540)
                 
             % Stage panel:
             this.hpStageControls = uipanel(...
@@ -510,7 +495,7 @@ classdef LSI_Control < handle
                 'Title', 'Stage control',...
                 'FontWeight', 'Bold',...
                 'Clipping', 'on',...
-                'Position', [20 440 720 440] ...
+                'Position', [10 250 490 600] ...
             );
         
             % Scan control panel:
@@ -520,7 +505,7 @@ classdef LSI_Control < handle
                 'Title', 'Position recall and coordinate transform',...
                 'FontWeight', 'Bold',...
                 'Clipping', 'on',...
-                'Position', [20 60 720 360] ...
+                'Position', [510 250 360 600] ...
                 );
         
             % Camera control panel:
@@ -530,7 +515,7 @@ classdef LSI_Control < handle
                 'Title', 'Camera control',...
                 'FontWeight', 'Bold',...
                 'Clipping', 'on',...
-                'Position', [770 160 650 120] ...
+                'Position', [880 730 540 120] ...
             );
            
 %             % Main control panel:
@@ -544,60 +529,48 @@ classdef LSI_Control < handle
 %                 );
                 
             % Position recall:
-            this.uiSLHexapod.build(this.hpPositionRecall, 10, 160, 340, 180);
-            this.uiSLGoni.build(this.hpPositionRecall, 10, 10, 340, 140);
-            this.uiSLReticle.build(this.hpPositionRecall, 360, 160, 340, 180);
+            this.uiSLHexapod.build(this.hpPositionRecall, 10, 410, 335, 190);
+            this.uiSLGoni.build(this.hpPositionRecall, 10, 210, 335, 190);
+            this.uiSLReticle.build(this.hpPositionRecall, 10, 10, 335, 190);
             
             
             
             % Stage UI elements
             
-            dAxisPos = 40;
+            dAxisPos = 20;
+            dLeft = 20;
             
             
-            
-            this.uiCommSmarActSmarPod.build(this.hFigure, dLeft, dTop);
-            dTop = dTop + dSep;
-            
-            this.uiCommSmarActMcsGoni.build(this.hFigure, dLeft, dTop);
-            dTop = dTop + 15 + dSep;
-            
-            this.uiCommDeltaTauPowerPmac.build(this.hFigure, dLeft, dTop);
-            dTop = dTop + dSep;
-            
-            
-            dH1 = dAxisPos;
+           
+             % Build comms and axes
+            this.uiCommSmarActSmarPod.build(this.hFigure, dLeft, dAxisPos);
+            this.uibHomeHexapod.build(this.hpStageControls, dLeft + 340, dAxisPos - 5, 95, 20);
+            dAxisPos = dAxisPos + 20;
             for k = 1:length(this.cHexapodAxisLabels)
                 this.uiDeviceArrayHexapod{k}.build(this.hpStageControls, ...
-                    40, dAxisPos);
+                    dLeft, dAxisPos);
                 dAxisPos = dAxisPos + this.dMultiAxisSeparation;
             end
             dAxisPos = dAxisPos + 20;
-            dH2 = dAxisPos;
+            this.uiCommSmarActMcsGoni.build(this.hFigure,  dLeft, dAxisPos);
+            this.uibHomeGoni.build(this.hpStageControls, dLeft + 340, dAxisPos - 5, 95, 20);
+            dAxisPos = dAxisPos + 20;
             for k = 1:length(this.cGoniLabels)
                 this.uiDeviceArrayGoni{k}.build(this.hpStageControls, ...
-                    40, dAxisPos);
+                    dLeft, dAxisPos);
                 dAxisPos = dAxisPos + this.dMultiAxisSeparation;
             end
             dAxisPos = dAxisPos + 20;
-             dH3 = dAxisPos;
-             for k = 1:length(this.cReticleLabels)
+            this.uiCommDeltaTauPowerPmac.build(this.hFigure,  dLeft, dAxisPos);
+            dAxisPos = dAxisPos + 20;
+            for k = 1:length(this.cReticleLabels)
                 this.uiDeviceArrayReticle{k}.build(this.hpStageControls, ...
-                    40, dAxisPos);
+                    dLeft, dAxisPos);
                 dAxisPos = dAxisPos + this.dMultiAxisSeparation;
             end
             
-           
+
             
-            this.uibConnectHexapod.build(this.hpStageControls, 510, dH1, 95, 40);
-            this.uibHomeHexapod.build(this.hpStageControls, 615, dH1, 95, 40);
-            
-            this.uibConnectGoni.build(this.hpStageControls, 510, dH2, 95, 40);
-            this.uibHomeGoni.build(this.hpStageControls, 615, dH2, 95, 40);
-            
-           
-            this.uibConnectReticle.build(this.hpStageControls, 510, dH3, 95, 40);
-            this.uibHomeReticle.build(this.hpStageControls, 615, dH3, 95, 40);
             
             
            % this.uibRotateCoordinates.build(this.hpStageControls, 600, 130, 100, 40);
