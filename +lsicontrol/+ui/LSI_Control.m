@@ -9,6 +9,15 @@ classdef LSI_Control < handle
         clock = {}
         vendorDevice
         
+        
+        % Comm handles:
+         % {mic.ui.device.GetSetLogical 1x1}
+        
+        uiCommDeltaTauPowerPmac
+        uiCommSmarActMcsGoni
+        uiCommSmarActSmarPod
+        
+        
         % Instruments handle
         hInstruments
         
@@ -84,7 +93,7 @@ classdef LSI_Control < handle
         
         cHexapodAxisLabels = {'X', 'Y', 'Z', 'Rx', 'Ry', 'Rz'};
         cGoniLabels = {'Goni-Rx', 'Goni-Ry'};
-        cReticleLabels = {'Ret-Fine-X', 'Ret-Fine-Y', 'Ret-Coarse-Z'};
+        cReticleLabels = {'Ret-Coarse-X', 'Ret-Coarse-Y', 'Ret-Rx', 'Ret-Ry', 'Ret-Coarse-Z', 'Ret-Fine-X', 'Ret-Fine-Y'};
     end
     
     properties (Access = private)
@@ -103,27 +112,61 @@ classdef LSI_Control < handle
                 this.initClock();
             end
             
-            this.initInstruments();
+            
             this.initConfig();
             this.initUi();
-            
-            this.initDevices();
+            this.initComm();
+%             this.initHexapodDevice();
+%             this.initGoniDevice();
             this.build();
             
             %this.loadStateFromDisk();
             
         end
         
-        function initInstruments(this)
+        function initComm(this)
+            ceVararginCommandToggle = {...
+                'cTextTrue', 'Disconnect', ...
+                'cTextFalse', 'Connect' ...
+            };
+
+
+            this.uiCommDeltaTauPowerPmac = mic.ui.device.GetSetLogical(...
+                'clock', this.clock, ...
+                'ceVararginCommandToggle', ceVararginCommandToggle, ...
+                'dWidthName', 130, ...
+                'lShowLabels', false, ...
+                'lShowDevice', false, ...
+                'lShowInitButton', false, ...
+                'cName', 'delta-tau-reticle', ...
+                'cLabel', 'Delta Tau Reticle' ...
+                );
+            this.uiCommSmarActMcsGoni = mic.ui.device.GetSetLogical(...
+                'clock', this.clock, ...
+                'ceVararginCommandToggle', ceVararginCommandToggle, ...
+                'dWidthName', 130, ...
+                'lShowLabels', false, ...
+                'lShowDevice', false, ...
+                'lShowInitButton', false, ...
+                'cName', 'goniometer', ...
+                'cLabel', 'Goni' ...
+                );
+            this.uiCommSmarActSmarPod = mic.ui.device.GetSetLogical(...
+                'clock', this.clock, ...
+                'ceVararginCommandToggle', ceVararginCommandToggle, ...
+                'dWidthName', 130, ...
+                'lShowLabels', false, ...
+                'lShowDevice', false, ...
+                'lShowInitButton', false, ...
+                'cName', 'smarpod', ...
+                'cLabel', 'SmarPod' ...
+                );
+        
+  
             
-            %load java library
-            javaclasspath(fullfile(this.cJavaLibPath, this.cJavaLibName));
-            import cxro.met5.Instruments.*;
-            import java.util.concurrent.Future;
             
-            % instruments:
-            this.hInstruments = cxro.met5.Instruments(this.cJavaLibPath);
         end
+        
         
         function initClock(this)
             this.clock = mic.Clock('app');
@@ -145,7 +188,7 @@ classdef LSI_Control < handle
                     'cPath', fullfile(this.cConfigPath, sprintf('goni%d.json', k))...
                     );
             end
-            for k = 1:3
+            for k = 1:7
                 this.uicReticleConfigs{k} = mic.config.GetSetNumber(...
                     'cPath', fullfile(this.cConfigPath, sprintf('reticle%d.json', k))...
                     );
@@ -285,9 +328,16 @@ classdef LSI_Control < handle
         
         
         % Need to implement these methods:
-        function getReticleRaw(this)
+        function positions = getReticleRaw(this)
+            for k = 1:length(this.uiDeviceArrayReticle)
+                positions(k) = this.uiDeviceArrayReticle{k}.getDestRaw(); %#ok<AGROW>
+            end
         end
+        
         function setReticleRaw(this, positions)
+            for k = 1:length(this.uiDeviceArrayReticle)
+                this.uiDeviceArrayReticle{k}.setAxesPosition(); %#ok<AGROW>
+            end
         end
         
         
@@ -373,31 +423,24 @@ classdef LSI_Control < handle
              end
         end
         
-        function launchRotationUI(this)
-            rc = mic.ui.common.RotationCorrectionUI('callback', @(Rt, rx, ry)this.rotateCoordinateSystem(Rt, rx, ry));
-        end
+%         function launchRotationUI(this)
+%             rc = mic.ui.common.RotationCorrectionUI('callback', @(Rt, rx, ry)this.rotateCoordinateSystem(Rt, rx, ry));
+%         end
+%         
+%         function rotateCoordinateSystem(this, R, rx, ry)
+%            for k = 1:6
+%                this.oHexapodBridges{k}.setR(R);
+%            end
+%            disp('Rotating coordinate system for hexapod bridges:');
+%            disp(R);
+%         end
         
-        function rotateCoordinateSystem(this, R, rx, ry)
-           for k = 1:6
-               this.oHexapodBridges{k}.setR(R);
-           end
-           disp('Rotating coordinate system for hexapod bridges:');
-           disp(R);
-        end
         
-        
-        
-        function initDevices(this)
+        function setHexapodDeviceAndEnable(this, device)
             
-            % Link devices here
-            
-            % Build device APIs
-
             % Instantiate javaStageAPIs for communicating with devices
             this.apiHexapod 	= lsicontrol.javaAPI.CXROJavaStageAPI(...
-                                  'fhStageGetter',  @() this.hInstruments.getLsiHexapod());
-            this.apiGoni        = lsicontrol.javaAPI.CXROJavaStageAPI(...
-                                  'fhStageGetter',  @() this.hInstruments.getLsiGoniometer());
+                                  'fhStageGetter',  @() device);
            
             
             % Use coupled-axis bridge to create single axis control
@@ -408,15 +451,40 @@ classdef LSI_Control < handle
                 this.uiDeviceArrayHexapod{k}.setDevice(this.oHexapodBridges{k});
             end
             
+            if strcmp(questdlg('Connect hexapod?'), 'Yes')
+                for k = 1:6
+                     this.uiDeviceArrayHexapod{k}.turnOn();
+                     this.uiDeviceArrayHexapod{k}.syncDestination();
+                end
+            end
+            
+        end
+        
+        function setGoniDeviceAndEnable(this, device)
+            
+            % Instantiate javaStageAPIs for communicating with devices
+            this.apiGoni        = lsicontrol.javaAPI.CXROJavaStageAPI(...
+                                  'fhStageGetter',  @() device);
+           
+            
              % Use coupled-axis bridge to create single axis control
             for k = 1:2
                 this.oGoniBridges{k} = lsicontrol.device.CoupledAxisBridge(this.apiGoni, k, 2);
                 this.uiDeviceArrayGoni{k}.setDevice(this.oGoniBridges{k});
             end
             
-
-                        
-
+            if strcmp(questdlg('Turn on Goniometer?'), 'Yes')
+                this.apiGoni.connect();
+                for k = 1:2
+                     this.uiDeviceArrayGoni{k}.turnOn();
+                     this.uiDeviceArrayGoni{k}.syncDestination();
+                end
+            end
+        end
+        
+        function setReticleAxisDevice(this, device, index)
+            this.uiDeviceArrayReticle{index}.setDevice(device);
+            this.uiDeviceArrayReticle{index}.syncDestination();
         end
         
         function build(this)
@@ -483,7 +551,21 @@ classdef LSI_Control < handle
             
             
             % Stage UI elements
+            
             dAxisPos = 40;
+            
+            
+            
+            this.uiCommSmarActSmarPod.build(this.hFigure, dLeft, dTop);
+            dTop = dTop + dSep;
+            
+            this.uiCommSmarActMcsGoni.build(this.hFigure, dLeft, dTop);
+            dTop = dTop + 15 + dSep;
+            
+            this.uiCommDeltaTauPowerPmac.build(this.hFigure, dLeft, dTop);
+            dTop = dTop + dSep;
+            
+            
             dH1 = dAxisPos;
             for k = 1:length(this.cHexapodAxisLabels)
                 this.uiDeviceArrayHexapod{k}.build(this.hpStageControls, ...
@@ -553,57 +635,9 @@ classdef LSI_Control < handle
             end
         end
         
-         function homeReticle(this)
-            if strcmp(questdlg('Would you like to home the Reticle?'), 'Yes')
-                this.apiReticle.home();
-            end
-        end
         
-        % Connnect hexapod and enable axes
-        function connectHexapod(this)
-            if strcmp(questdlg('Connect hexapod?'), 'Yes')
-                for k = 1:6
-                     this.uiDeviceArrayHexapod{k}.turnOn();
-                     this.uiDeviceArrayHexapod{k}.syncDestination();
-                end
-            end
-        end
+
         
-        % Connnect Goni and enable axes
-         function connectGoni(this)
-            if strcmp(questdlg('Turn on Goniometer?'), 'Yes')
-                this.apiGoni.connect();
-                for k = 1:2
-                     this.uiDeviceArrayGoni{k}.turnOn();
-                     this.uiDeviceArrayGoni{k}.syncDestination();
-                end
-            end
-         end
-        
-          % Connnect Goni and enable axes
-         function connectReticle(this)
-            if strcmp(questdlg('Enable Reticle control?'), 'Yes')
-                this.apiReticle.connect();
-                for k = 1:3
-                     this.uiDeviceArrayReticle{k}.turnOn();
-                     this.uiDeviceArrayReticle{k}.syncDestination();
-                end
-            end
-        end
-        
-        function turnOnAllDeviceUi(this)
-%             this.uiDeviceX.turnOn();
-%             this.uiDeviceY.turnOn();
-%             this.uiDeviceMode.turnOn();
-%             this.uiDeviceAwesome.turnOn();
-        end
-        
-        function turnOffAllDeviceUi(this)
-%             this.uiDeviceX.turnOff();
-%             this.uiDeviceY.turnOff();
-%             this.uiDeviceMode.turnOff();
-%             this.uiDeviceAwesome.turnOff();
-        end
         
         function delete(this)
             this.saveStateToDisk();
