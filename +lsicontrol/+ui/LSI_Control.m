@@ -543,7 +543,7 @@ classdef LSI_Control < handle
             
            
              % Build comms and axes
-            this.uiCommSmarActSmarPod.build(this.hFigure, dLeft, dAxisPos);
+            this.uiCommSmarActSmarPod.build(this.hpStageControls, dLeft, dAxisPos);
             this.uibHomeHexapod.build(this.hpStageControls, dLeft + 340, dAxisPos - 5, 95, 20);
             dAxisPos = dAxisPos + 20;
             for k = 1:length(this.cHexapodAxisLabels)
@@ -552,7 +552,7 @@ classdef LSI_Control < handle
                 dAxisPos = dAxisPos + this.dMultiAxisSeparation;
             end
             dAxisPos = dAxisPos + 20;
-            this.uiCommSmarActMcsGoni.build(this.hFigure,  dLeft, dAxisPos);
+            this.uiCommSmarActMcsGoni.build(this.hpStageControls,  dLeft, dAxisPos);
             this.uibHomeGoni.build(this.hpStageControls, dLeft + 340, dAxisPos - 5, 95, 20);
             dAxisPos = dAxisPos + 20;
             for k = 1:length(this.cGoniLabels)
@@ -561,7 +561,7 @@ classdef LSI_Control < handle
                 dAxisPos = dAxisPos + this.dMultiAxisSeparation;
             end
             dAxisPos = dAxisPos + 20;
-            this.uiCommDeltaTauPowerPmac.build(this.hFigure,  dLeft, dAxisPos);
+            this.uiCommDeltaTauPowerPmac.build(this.hpStageControls,  dLeft, dAxisPos);
             dAxisPos = dAxisPos + 20;
             for k = 1:length(this.cReticleLabels)
                 this.uiDeviceArrayReticle{k}.build(this.hpStageControls, ...
