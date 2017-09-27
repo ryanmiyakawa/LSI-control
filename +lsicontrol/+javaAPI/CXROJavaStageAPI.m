@@ -208,7 +208,7 @@ classdef CXROJavaStageAPI < handle
         end
         
         function dOut = getAxesPositionAPI(this)
-            dOut = this.jStage.getAxesPositionAPI();
+            dOut = this.jStage.getAxesPosition();
         end
         
         function statusAr = getAxesStatus(this)
@@ -261,7 +261,7 @@ classdef CXROJavaStageAPI < handle
         end
         
         function dOut = getAxisPositionAPI(this, dAxis)
-            dOut = this.jStage.getAxisPositionAPI(dAxis - 1);
+            dOut = this.jStage.getAxisPosition(dAxis - 1);
         end
         
         function status = getAxisStatus(this, dAxis)
@@ -277,29 +277,29 @@ classdef CXROJavaStageAPI < handle
         end
         
         function future = initializeAxes(this)
-            future = this.jStage.initializedAxes();
+            future = this.jStage.initializeAxes();
         end
         
         function future = initializeAxis(this, dAxis)
             future = this.jStage.initializeAxis(dAxis - 1);
         end
         
-        function future = moveAxesAbsolute(this)
-            future = this.jStage.moveAxesAbsolute();
+        function future = moveAxesAbsolute(this, dDest)
+            future = this.jStage.moveAxesAbsolute(dDest);
         end
         
-        function future = moveAxesRelative(this)
-            future = this.jStage.moveAxesRelative();
+        function future = moveAxesRelative(this, dDest)
+            future = this.jStage.moveAxesRelative(dDest);
         end
-        function future = moveAxisAbsolute(this, dAxis)
-            future = this.jStage.moveAxisAbsolute(dAxis - 1);
+        function future = moveAxisAbsolute(this, dAxis, dDest)
+            future = this.jStage.moveAxisAbsolute(dAxis - 1, dDest);
         end
         
-        function future = moveAxisRelative(this, dAxis)
-            future = this.jStage.moveAxisRelative(dAxis - 1);
+        function future = moveAxisRelative(this, dAxis, dDest)
+            future = this.jStage.moveAxisRelative(dAxis - 1, dDest);
         end
-        function [result, msg] = setAxesDestination(this)
-            result = this.jStage.setAxesDestination();
+        function [result, msg] = setAxesDestination(this, dDest)
+            result = this.jStage.setAxesDestination(dDest);
             msg = this.RESULTENUM{result - 1};
         end
 

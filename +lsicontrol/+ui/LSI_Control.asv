@@ -6,8 +6,17 @@ classdef LSI_Control < handle
         cJavaLibPath = 'C:\Users\cxrodev\Documents\MATLAB\metdev\LSI-control';
         cJavaLibName = 'Met5Instruments.jar';
         cConfigPath
-        clock
+        clock = {}
         vendorDevice
+        
+        
+        % Comm handles:
+         % {mic.ui.device.GetSetLogical 1x1}
+        
+        uiCommDeltaTauPowerPmac
+        uiCommSmarActMcsGoni
+        uiCommSmarActSmarPod
+        
         
         % Instruments handle
         hInstruments
@@ -22,12 +31,9 @@ classdef LSI_Control < handle
         oGoniBridges
         oReticleBridges
         
-        uibConnectHexapod
-        uibConnectGoni
-        uibConnectReticle
+
         uibHomeHexapod
         uibHomeGoni
-        uibHomeReticle
         
         % APIs:
         apiHexapod
@@ -54,7 +60,10 @@ classdef LSI_Control < handle
         uiToggleAll
         uiButtonUseDeviceData
         
-        uiSaveLoadUI
+        uiSLHexapod
+        uiSLGoni
+        uiSLReticle
+        
         
         % Coupled motion parameters
         uieRx
@@ -75,13 +84,13 @@ classdef LSI_Control < handle
     
     properties (Constant)
         dWidth  = 1440;
-        dHeight =  860;
+        dHeight =  900;
         
         dMultiAxisSeparation = 30;
         
         cHexapodAxisLabels = {'X', 'Y', 'Z', 'Rx', 'Ry', 'Rz'};
         cGoniLabels = {'Goni-Rx', 'Goni-Ry'};
-        cReticleLabels = {'Ret-X', 'Ret-Y', 'Ret-Z'};
+        cReticleLabels = {'Ret-Coarse-X', 'Ret-Coarse-Y', 'Ret-Rx', 'Ret-Ry', 'Ret-Coarse-Z', 'Ret-Fine-X', 'Ret-Fine-Y'};
     end
     
     properties (Access = private)
@@ -92,33 +101,69 @@ classdef LSI_Control < handle
         
         function this = LSI_Control(varargin)
             
-            for k = 1:length(varargin)
+            for k = 1:2:length(varargin)
                 this.(varargin{k}) = varargin{k+1};
             end
             
+            if isempty(this.clock)
+                this.initClock();
+            end
             
-            this.initClock();
-            this.initInstruments();
+            
             this.initConfig();
             this.initUi();
-            
-            this.initDevices();
-            this.build();
+            this.initComm();
+%             this.initHexapodDevice();
+%             this.initGoniDevice();
+%             this.build();
             
             %this.loadStateFromDisk();
             
         end
         
-        function initInstruments(this)
+        function initComm(this)
+            ceVararginCommandToggle = {...
+                'cTextTrue', 'Disconnect', ...
+                'cTextFalse', 'Connect' ...
+            };
+
+
+            this.uiCommDeltaTauPowerPmac = mic.ui.device.GetSetLogical(...
+                'clock', this.clock, ...
+                'ceVararginCommandToggle', ceVararginCommandToggle, ...
+                'dWidthName', 130, ...
+                'lShowLabels', false, ...
+                'lShowDevice', false, ...
+                'lShowInitButton', false, ...
+                'cName', 'delta-tau-reticle', ...
+                'cLabel', 'Delta Tau Reticle' ...
+                );
+            this.uiCommSmarActMcsGoni = mic.ui.device.GetSetLogical(...
+                'clock', this.clock, ...
+                'ceVararginCommandToggle', ceVararginCommandToggle, ...
+                'dWidthName', 130, ...
+                'lShowLabels', false, ...
+                'lShowDevice', false, ...
+                'lShowInitButton', false, ...
+                'cName', 'goniometer', ...
+                'cLabel', 'Goni' ...
+                );
+            this.uiCommSmarActSmarPod = mic.ui.device.GetSetLogical(...
+                'clock', this.clock, ...
+                'ceVararginCommandToggle', ceVararginCommandToggle, ...
+                'dWidthName', 130, ...
+                'lShowLabels', false, ...
+                'lShowDevice', false, ...
+                'lShowInitButton', false, ...
+                'cName', 'smarpod', ...
+                'cLabel', 'SmarPod' ...
+                );
+        
+  
             
-            %load java library
-            javaclasspath(fullfile(this.cJavaLibPath, this.cJavaLibName));
-            import cxro.met5.Instruments.*;
-            import java.util.concurrent.Future;
             
-            % instruments:
-            this.hInstruments = cxro.met5.Instruments(this.cJavaLibPath);
         end
+        
         
         function initClock(this)
             this.clock = mic.Clock('app');
@@ -140,7 +185,7 @@ classdef LSI_Control < handle
                     'cPath', fullfile(this.cConfigPath, sprintf('goni%d.json', k))...
                     );
             end
-            for k = 1:3
+            for k = 1:7
                 this.uicReticleConfigs{k} = mic.config.GetSetNumber(...
                     'cPath', fullfile(this.cConfigPath, sprintf('reticle%d.json', k))...
                     );
@@ -242,102 +287,238 @@ classdef LSI_Control < handle
             this.uibHomeGoni = mic.ui.common.Button(...
                 'cText', 'Home Goni' , 'fhDirectCallback', @(src,evt)this.homeGoni ...
             );
-            this.uibHomeReticle = mic.ui.common.Button(...
-                'cText', 'Home Reticle' , 'fhDirectCallback', @(src,evt)this.homeReticle ...
-            );
-        
-        
-            this.uibConnectHexapod = mic.ui.common.Button(...
-                'cText', 'Connect Hexapod' , 'fhDirectCallback', @(src,evt)this.connectHexapod ...
-            );
-            this.uibConnectGoni = mic.ui.common.Button(...
-                'cText', 'Connect Goni' , 'fhDirectCallback', @(src,evt)this.connectGoni ...
-            );
-            this.uibConnectReticle = mic.ui.common.Button(...
-                'cText', 'Connect Reticle' , 'fhDirectCallback', @(src,evt)this.connectReticle ...
-            );
-        
-            this.uiFileWatcher = mic.ui.common.FileWatcher(...
-                'hCallback', @(src, p, d)this.fileWatchHandler(src, p, d), ...
-                'clock', this.clock);
 
-            this.uiSaveLoadUI = mic.ui.common.SaveLoadList(...
-                'cConfigPath', fullfile(this.cAppPath, 'config'), ...
+        
+
+
+
+            this.uiSLHexapod = mic.ui.common.PositionRecaller(...
+                'cConfigPath', fullfile(this.cAppPath, '+config'), ...
+                'cName', 'Hexapod', ...
                 'hGetCallback', @this.getHexapodRaw, ...
                 'hSetCallback', @this.setHexapodRaw);
-
+            
+            this.uiSLGoni = mic.ui.common.PositionRecaller(...
+                'cConfigPath', fullfile(this.cAppPath, '+config'), ...
+                'cName', 'Goni', ...
+                'hGetCallback', @this.getGoniRaw, ...
+                'hSetCallback', @this.setGoniRaw);
+            this.uiSLReticle = mic.ui.common.PositionRecaller(...
+                'cConfigPath', fullfile(this.cAppPath, '+config'), ...
+                'cName', 'Reticle', ...
+                'hGetCallback', @this.getReticleRaw, ...
+                'hSetCallback', @this.setReticleRaw);
         
         end
         
         
-        
-        function setHexapodRaw(this, positions) 
-            % Set hexapod positions to saved values
-            this.apiHexapod.setAxesPosition(positions);
-            
-            % Wait till hexapod has finished move:
-            for k = 1:20
-                if (this.apiHexapod.isReady())
-                    break;
-                end
-                pause(.5)
+        % Need to implement these methods:
+        function positions = getReticleRaw(this)
+            for k = 1:length(this.uiDeviceArrayReticle)
+                positions(k) = this.uiDeviceArrayReticle{k}.getDestRaw(); %#ok<AGROW>
             end
-            
-            % Sync edit boxes
+        end
+        
+        function setReticleRaw(this, positions)
+            for k = 1:length(this.uiDeviceArrayReticle)
+                this.uiDeviceArrayReticle{k}.setAxesPosition(); %#ok<AGROW>
+            end
+        end
+        
+        
+        function syncHexapodDestinations(this)
+         % Sync edit boxes
             for k = 1:length(this.cHexapodAxisLabels)
                 this.uiDeviceArrayHexapod{k}.syncDestination();
             end
         end
+        function syncGoniDestinations(this)
+         % Sync edit boxes
+            for k = 1:length(this.cGoniLabels)
+                this.uiDeviceArrayGoni{k}.syncDestination();
+            end
+        end
+        function syncReticleDestinations(this)
+         % Sync edit boxes
+            for k = 1:length(this.cGoniLabels)
+                this.uiDeviceArrayGoni{k}.syncDestination();
+            end
+        end
         
+        
+        % Sets the raw positions to hexapod.  Used as a handler for
+        % PositionRecaller
+        function setHexapodRaw(this, positions) 
+            
+            if ~isempty(this.apiHexapod)
+                % Set hexapod positions to saved values
+                this.apiHexapod.setAxesPosition(positions);
+
+                % Wait till hexapod has finished move:
+                dafHexapodMoving = mic.DeferredActionScheduler(...
+                    'clock', this.clock, ...
+                    'fhAction', @()this.syncHexapodDestinations(),...
+                    'fhTrigger', @()this.apiHexapod.isReady(),...
+                    'cName', 'DASHexapodMoving', ...
+                    'dDelay', 1, ...
+                    'dExpiration', 10, ...
+                    'lShowExpirationMessage', true);
+                dafHexapodMoving.dispatch();
+            else
+                % If Hexapod is not connected, set GetSetNumber UIs:
+                for k = 1:length(positions)
+                    this.uiDeviceArrayHexapod{k}.setDestRaw(positions(k));
+                    this.uiDeviceArrayHexapod{k}.moveToDest();
+                end
+            end
+        end
+        
+        % Gets the raw positions from hexapod.  Used as a handler for 
+        % PositionRecaller
         function positions = getHexapodRaw(this)
-             positions = this.apiHexapod.getAxesPosition();
+             if ~isempty(this.apiHexapod)
+                positions = this.apiHexapod.getAxesPosition();
+             else % get virtual positions from GetSetNumber UIs:
+                 for k = 1:length(this.uiDeviceArrayHexapod)
+                     positions(k) = this.uiDeviceArrayHexapod{k}.getDestRaw(); %#ok<AGROW>
+                 end
+             end
         end
         
-        
-        function launchRotationUI(this)
-            rc = mic.ui.common.RotationCorrectionUI('callback', @(Rt, rx, ry)this.rotateCoordinateSystem(Rt, rx, ry));
+        % Sets the raw positions to hexapod.  Used as a handler for
+        % PositionRecaller
+        function setGoniRaw(this, positions) 
+            if ~isempty(this.apiGoni)
+                % Set hexapod positions to saved values
+                this.apiGoni.setAxesPosition(positions);
+
+                % Wait till hexapod has finished move:
+                dafGoniMoving = mic.DeferredActionScheduler(...
+                    'clock', this.clock, ...
+                    'fhAction', @()this.syncGoniDestinations(),...
+                    'fhTrigger', @()this.apiGoni.isReady(),...
+                    'cName', 'DASHexapodMoving', ...
+                    'dDelay', 1, ...
+                    'dExpiration', 10, ...
+                    'lShowExpirationMessage', true);
+                dafGoniMoving.dispatch();
+            else
+                % If Hexapod is not connected, set GetSetNumber UIs:
+                for k = 1:length(positions)
+                    this.uiDeviceArrayGoni{k}.setDestRaw(positions(k));
+                    this.uiDeviceArrayGoni{k}.moveToDest();
+                end
+            end
         end
         
-        function rotateCoordinateSystem(this, R, rx, ry)
-           for k = 1:6
-               this.oHexapodBridges{k}.setR(R);
-           end
-           disp('Rotating coordinate system for hexapod bridges:');
-           disp(R);
+        function positions = getGoniRaw(this)
+             if ~isempty(this.apiGoni)
+                positions = this.apiGoni.getAxesPosition();
+             else % get virtual positions from GetSetNumber UIs:
+                 for k = 1:length(this.uiDeviceArrayGoni)
+                     positions(k) = this.uiDeviceArrayGoni{k}.getDestRaw(); %#ok<AGROW>
+                 end
+             end
         end
         
+%         function launchRotationUI(this)
+%             rc = mic.ui.common.RotationCorrectionUI('callback', @(Rt, rx, ry)this.rotateCoordinateSystem(Rt, rx, ry));
+%         end
+%         
+%         function rotateCoordinateSystem(this, R, rx, ry)
+%            for k = 1:6
+%                this.oHexapodBridges{k}.setR(R);
+%            end
+%            disp('Rotating coordinate system for hexapod bridges:');
+%            disp(R);
+%         end
         
         
-        function initDevices(this)
+        function setHexapodDeviceAndEnable(this, device)
             
-            % Link devices here
-            
-            % Build device APIs
-            this.apiHexapod 	= app.device.APISmarPod(this.hInstruments);
-            this.apiGoni        = app.device.APIGoni(this.hInstruments);
-            this.apiReticle     = app.device.APIReticle(this.hInstruments);
+            % Instantiate javaStageAPIs for communicating with devices
+            this.apiHexapod 	= lsicontrol.javaAPI.CXROJavaStageAPI(...
+                                  'jStage', device);
+           
+            % Check if we need to index stage:
+            if (~this.apiHexapod.isInitialized())
+                if strcmp(questdlg('Hexapod is not referenced. Index now?'), 'Yes')
+                    this.apiHexapod.home();
+                     % Wait till hexapod has finished move:
+                    dafHexapodHome = mic.DeferredActionScheduler(...
+                        'clock', this.clock, ...
+                        'fhAction', @()this.setHexapodDeviceAndEnable(device),...
+                        'fhTrigger', @()this.apiHexapod.isInitialized(),...
+                        'cName', 'DASHexapodIndexing', ...
+                        'dDelay', 0.5, ...
+                        'dExpiration', 10, ...
+                        'lShowExpirationMessage', true);
+                    dafHexapodHome.dispatch();
+                
+                end
+                return % Return in either case, only proceed if initialized
+            end
             
             % Use coupled-axis bridge to create single axis control
             dHexapodR = [[-1 0 0 ; 0 0 1; 0 1 0], zeros(3); zeros(3), [-1 0 0 ; 0 0 1; 0 1 0]];  
             for k = 1:6
-                this.oHexapodBridges{k} = app.device.CoupledAxisBridge(this.apiHexapod, k, 6);
+                this.oHexapodBridges{k} = lsicontrol.device.CoupledAxisBridge(this.apiHexapod, k, 6);
                 this.oHexapodBridges{k}.setR(dHexapodR);
                 this.uiDeviceArrayHexapod{k}.setDevice(this.oHexapodBridges{k});
+                this.uiDeviceArrayHexapod{k}.turnOn();
+                this.uiDeviceArrayHexapod{k}.syncDestination();
             end
+        end
+        
+        function disconnectHexapod(this)
+            for k = 1:6
+                this.oHexapodBridges{k} = [];
+                this.uiDeviceArrayHexapod{k}.turnOff();
+                this.uiDeviceArrayHexapod{k}.setDevice([]);
+            end
+            this.apiHexapod = [];
+        end
+        
+        function setGoniDeviceAndEnable(this, device)
             
-             % Use coupled-axis bridge to create single axis control
-            for k = 1:2
-                this.oGoniBridges{k} = app.device.CoupledAxisBridge(this.apiGoni, k, 2);
-                this.uiDeviceArrayGoni{k}.setDevice(this.oGoniBridges{k});
+            % Instantiate javaStageAPIs for communicating with devices
+            this.apiGoni        = lsicontrol.javaAPI.CXROJavaStageAPI(...
+                                  'jStage', device);
+            % Check if we need to index stage:
+            if (~this.apiGoni.isInitialized())
+                if strcmp(questdlg('Goniometer is not referenced. Index now?'), 'Yes')
+                    this.apiGoni.home();
+                else
+                    return
+                end
             end
             
             % Use coupled-axis bridge to create single axis control
-            for k = 1:3
-                this.oReticleBridges{k} = app.device.CoupledAxisBridge(this.apiReticle, k, 3);
-                this.uiDeviceArrayReticle{k}.setDevice(this.oReticleBridges{k});
+            for k = 1:2
+                this.oGoniBridges{k} = lsicontrol.device.CoupledAxisBridge(this.apiGoni, k, 2);
+                this.uiDeviceArrayGoni{k}.setDevice(this.oGoniBridges{k});
+                this.uiDeviceArrayGoni{k}.turnOn();
+                this.uiDeviceArrayGoni{k}.syncDestination();
             end
-                        
-
+        end
+        
+         function disconnectGoni(this)
+            for k = 1:2
+                this.oGoniBridges{k} = [];
+                this.uiDeviceArrayGoni{k}.turnOff();
+                this.uiDeviceArrayGoni{k}.setDevice([]);
+            end
+            this.apiGoni = [];
+        end
+        
+        function setReticleAxisDevice(this, device, index)
+            this.uiDeviceArrayReticle{index}.setDevice(device);
+            this.uiDeviceArrayReticle{index}.turnOn();
+            this.uiDeviceArrayReticle{index}.syncDestination();
+        end
+        function disconnectReticleAxisDevice(this, index)
+            this.uiDeviceArrayReticle{index}.turnOff();
+            this.uiDeviceArrayReticle{index}.setDevice([]);
         end
         
         function build(this)
@@ -350,10 +531,11 @@ classdef LSI_Control < handle
                     'handlevisibility','off',... %out of reach gcf
                     'numberTitle','off',...
                     'Toolbar','none',...
-                    'Menubar','none');
+                    'Menubar','none', ...
+                    'Color', [0.7 0.73 0.73]);
                 
            % Main Axes:
-            this.hsaAxes.build(this.hFigure, 800, 260, 580, 580)
+            this.hsaAxes.build(this.hFigure, 880, 165, 540, 540)
                 
             % Stage panel:
             this.hpStageControls = uipanel(...
@@ -362,7 +544,7 @@ classdef LSI_Control < handle
                 'Title', 'Stage control',...
                 'FontWeight', 'Bold',...
                 'Clipping', 'on',...
-                'Position', [20 400 720 440] ...
+                'Position', [10 250 490 600] ...
             );
         
             % Scan control panel:
@@ -372,7 +554,7 @@ classdef LSI_Control < handle
                 'Title', 'Position recall and coordinate transform',...
                 'FontWeight', 'Bold',...
                 'Clipping', 'on',...
-                'Position', [20 20 720 360] ...
+                'Position', [510 250 360 600] ...
                 );
         
             % Camera control panel:
@@ -382,7 +564,7 @@ classdef LSI_Control < handle
                 'Title', 'Camera control',...
                 'FontWeight', 'Bold',...
                 'Clipping', 'on',...
-                'Position', [800 20 580 200] ...
+                'Position', [880 730 540 120] ...
             );
            
 %             % Main control panel:
@@ -396,52 +578,61 @@ classdef LSI_Control < handle
 %                 );
                 
             % Position recall:
-            this.uiSaveLoadUI.build(this.hpPositionRecall, 10, 10, 350, 270);
+            this.uiSLHexapod.build(this.hpPositionRecall, 10, 410, 335, 190);
+            this.uiSLGoni.build(this.hpPositionRecall, 10, 210, 335, 190);
+            this.uiSLReticle.build(this.hpPositionRecall, 10, 10, 335, 190);
             
             
             
             % Stage UI elements
-            dAxisPos = 40;
+            
+            dAxisPos = 30;
+            dLeft = 20;
+            
+            
+           
+             % Build comms and axes
+            this.uiCommSmarActSmarPod.build(this.hpStageControls, dLeft, dAxisPos - 7);
+            this.uibHomeHexapod.build(this.hpStageControls, dLeft + 340, dAxisPos - 5, 95, 20);
+            dAxisPos = dAxisPos + 20;
             for k = 1:length(this.cHexapodAxisLabels)
                 this.uiDeviceArrayHexapod{k}.build(this.hpStageControls, ...
-                    40, dAxisPos);
+                    dLeft, dAxisPos);
                 dAxisPos = dAxisPos + this.dMultiAxisSeparation;
             end
+            dAxisPos = dAxisPos + 20;
+            this.uiCommSmarActMcsGoni.build(this.hpStageControls,  dLeft, dAxisPos - 7);
+            this.uibHomeGoni.build(this.hpStageControls, dLeft + 340, dAxisPos - 5, 95, 20);
             dAxisPos = dAxisPos + 20;
             for k = 1:length(this.cGoniLabels)
                 this.uiDeviceArrayGoni{k}.build(this.hpStageControls, ...
-                    40, dAxisPos);
+                    dLeft, dAxisPos);
                 dAxisPos = dAxisPos + this.dMultiAxisSeparation;
             end
             dAxisPos = dAxisPos + 20;
-             for k = 1:length(this.cReticleLabels)
+            this.uiCommDeltaTauPowerPmac.build(this.hpStageControls,  dLeft, dAxisPos - 7);
+            dAxisPos = dAxisPos + 20;
+            for k = 1:length(this.cReticleLabels)
                 this.uiDeviceArrayReticle{k}.build(this.hpStageControls, ...
-                    40, dAxisPos);
+                    dLeft, dAxisPos);
                 dAxisPos = dAxisPos + this.dMultiAxisSeparation;
             end
             
-           
+
             
-            this.uibConnectHexapod.build(this.hpStageControls, 510, 40, 95, 40);
-            this.uibHomeHexapod.build(this.hpStageControls, 615, 500, 95, 40);
-            
-            this.uibConnectGoni.build(this.hpStageControls, 615, 40, 95, 40);
-            
-           
-            this.uibHomeGoni.build(this.hpStageControls, 615, 500, 95, 40);
             
             
            % this.uibRotateCoordinates.build(this.hpStageControls, 600, 130, 100, 40);
             
             % Camera UI elements
-            this.uiDeviceCameraTemperature.build(this.hpCameraControls, 20, 20);            
-            this.uiDeviceCameraExposureTime.build(this.hpCameraControls, 20, 70);
+            this.uiDeviceCameraTemperature.build(this.hpCameraControls, 10, 15);            
+            this.uiDeviceCameraExposureTime.build(this.hpCameraControls, 10, 45);
             
 %             this.uiFileWatcher.build(this.hpCameraControls, 20, 55);
 
-            this.uiButtonFocus.build(this.hpCameraControls, 20, 150, 120, 40);
-            this.uiButtonAcquire.build(this.hpCameraControls, 160, 150, 120, 40);
-            this.uiButtonSaveImage.build(this.hpCameraControls, 300, 150, 120, 40);
+            this.uiButtonFocus.build(this.hpCameraControls, 20, 80, 100, 30);
+            this.uiButtonAcquire.build(this.hpCameraControls, 160, 80, 100, 30);
+            this.uiButtonSaveImage.build(this.hpCameraControls, 300, 80, 100, 30);
       
             % Position recall elements
            % this.uiButtonAdd
@@ -455,51 +646,20 @@ classdef LSI_Control < handle
         end
         
         function homeHexapod(this)
-            if strcmp(questdlg('Would you like to home the stage?'), 'Yes')
+            if strcmp(questdlg('Would you like to home the Hexapod?'), 'Yes')
                 this.apiHexapod.home();
             end
         end
         
-         function homeGoni(this)
-            if strcmp(questdlg('Would you like to home the stage?'), 'Yes')
+        function homeGoni(this)
+            if strcmp(questdlg('Would you like to home the Goniometer?'), 'Yes')
                 this.apiGoni.home();
             end
         end
         
-        % Connnect hexapod and enable axes
-        function connectHexapod(this)
-            if strcmp(questdlg('Connect hexapod?'), 'Yes')
-                for k = 1:6
-                     this.uiDeviceArrayHexapod{k}.turnOn();
-                     this.uiDeviceArrayHexapod{k}.syncDestination();
-                end
-            end
-        end
         
-        % Connnect Goni and enable axes
-         function connectGoni(this)
-            if strcmp(questdlg('Turn on Goniometer?'), 'Yes')
-                this.apiGoni.connect();
-                for k = 1:2
-                     this.uiDeviceArrayGoni{k}.turnOn();
-                     this.uiDeviceArrayGoni{k}.syncDestination();
-                end
-            end
-        end
+
         
-        function turnOnAllDeviceUi(this)
-%             this.uiDeviceX.turnOn();
-%             this.uiDeviceY.turnOn();
-%             this.uiDeviceMode.turnOn();
-%             this.uiDeviceAwesome.turnOn();
-        end
-        
-        function turnOffAllDeviceUi(this)
-%             this.uiDeviceX.turnOff();
-%             this.uiDeviceY.turnOff();
-%             this.uiDeviceMode.turnOff();
-%             this.uiDeviceAwesome.turnOff();
-        end
         
         function delete(this)
             this.saveStateToDisk();
@@ -508,6 +668,8 @@ classdef LSI_Control < handle
         end
         
         function deleteUi(this)
+            % Stop the clock:
+            this.clock.stop();
                         
             for k = 1:length(this.cHexapodAxisLabels)
                 delete(this.uiDeviceArrayHexapod{k});

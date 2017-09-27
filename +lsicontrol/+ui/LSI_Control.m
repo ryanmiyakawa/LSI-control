@@ -288,10 +288,6 @@ classdef LSI_Control < handle
                 'cText', 'Home Goni' , 'fhDirectCallback', @(src,evt)this.homeGoni ...
             );
 
-        
-
-
-
             this.uiSLHexapod = mic.ui.common.PositionRecaller(...
                 'cConfigPath', fullfile(this.cAppPath, '+config'), ...
                 'cName', 'Hexapod', ...
@@ -326,27 +322,44 @@ classdef LSI_Control < handle
         end
         
         
+        function syncHexapodDestinations(this)
+         % Sync edit boxes
+            for k = 1:length(this.cHexapodAxisLabels)
+                this.uiDeviceArrayHexapod{k}.syncDestination();
+            end
+        end
+        function syncGoniDestinations(this)
+         % Sync edit boxes
+            for k = 1:length(this.cGoniLabels)
+                this.uiDeviceArrayGoni{k}.syncDestination();
+            end
+        end
+        function syncReticleDestinations(this)
+         % Sync edit boxes
+            for k = 1:length(this.cReticleLabels)
+                this.uiDeviceArrayReticle{k}.syncDestination();
+            end
+        end
+        
+        
         % Sets the raw positions to hexapod.  Used as a handler for
         % PositionRecaller
         function setHexapodRaw(this, positions) 
             
-            if this.apiHexapod.isStageDefined
+            if ~isempty(this.apiHexapod)
                 % Set hexapod positions to saved values
                 this.apiHexapod.setAxesPosition(positions);
 
                 % Wait till hexapod has finished move:
-                for k = 1:20
-                    if (this.apiHexapod.isReady())
-                        break;
-                    end
-                    pause(.5)
-                end
-
-                % Sync edit boxes
-                for k = 1:length(this.cHexapodAxisLabels)
-                    this.uiDeviceArrayHexapod{k}.syncDestination();
-                end
-            
+                dafHexapodMoving = mic.DeferredActionScheduler(...
+                    'clock', this.clock, ...
+                    'fhAction', @()this.syncHexapodDestinations(),...
+                    'fhTrigger', @()this.apiHexapod.isReady(),...
+                    'cName', 'DASHexapodMoving', ...
+                    'dDelay', 1, ...
+                    'dExpiration', 10, ...
+                    'lShowExpirationMessage', true);
+                dafHexapodMoving.dispatch();
             else
                 % If Hexapod is not connected, set GetSetNumber UIs:
                 for k = 1:length(positions)
@@ -359,7 +372,7 @@ classdef LSI_Control < handle
         % Gets the raw positions from hexapod.  Used as a handler for 
         % PositionRecaller
         function positions = getHexapodRaw(this)
-             if this.apiHexapod.isStageDefined
+             if ~isempty(this.apiHexapod)
                 positions = this.apiHexapod.getAxesPosition();
              else % get virtual positions from GetSetNumber UIs:
                  for k = 1:length(this.uiDeviceArrayHexapod)
@@ -368,27 +381,23 @@ classdef LSI_Control < handle
              end
         end
         
-                % Sets the raw positions to hexapod.  Used as a handler for
+        % Sets the raw positions to hexapod.  Used as a handler for
         % PositionRecaller
         function setGoniRaw(this, positions) 
-            
-            if this.apiGoni.isStageDefined
+            if ~isempty(this.apiGoni)
                 % Set hexapod positions to saved values
                 this.apiGoni.setAxesPosition(positions);
 
                 % Wait till hexapod has finished move:
-                for k = 1:20
-                    if (this.apiGoni.isReady())
-                        break;
-                    end
-                    pause(.5)
-                end
-
-                % Sync edit boxes
-                for k = 1:length(this.cGoniAxisLabels)
-                    this.uiDeviceArrayGoni{k}.syncDestination();
-                end
-            
+                dafGoniMoving = mic.DeferredActionScheduler(...
+                    'clock', this.clock, ...
+                    'fhAction', @()this.syncGoniDestinations(),...
+                    'fhTrigger', @()this.apiGoni.isReady(),...
+                    'cName', 'DASHexapodMoving', ...
+                    'dDelay', 1, ...
+                    'dExpiration', 10, ...
+                    'lShowExpirationMessage', true);
+                dafGoniMoving.dispatch();
             else
                 % If Hexapod is not connected, set GetSetNumber UIs:
                 for k = 1:length(positions)
@@ -399,7 +408,7 @@ classdef LSI_Control < handle
         end
         
         function positions = getGoniRaw(this)
-             if this.apiGoni.isStageDefined
+             if ~isempty(this.apiGoni)
                 positions = this.apiGoni.getAxesPosition();
              else % get virtual positions from GetSetNumber UIs:
                  for k = 1:length(this.uiDeviceArrayGoni)
@@ -425,8 +434,26 @@ classdef LSI_Control < handle
             
             % Instantiate javaStageAPIs for communicating with devices
             this.apiHexapod 	= lsicontrol.javaAPI.CXROJavaStageAPI(...
-                                  'fhStageGetter',  @() device);
+                                  'jStage', device);
            
+            % Check if we need to index stage:
+            if (~this.apiHexapod.isInitialized())
+                if strcmp(questdlg('Hexapod is not referenced. Index now?'), 'Yes')
+                    this.apiHexapod.home();
+                     % Wait till hexapod has finished move:
+                    dafHexapodHome = mic.DeferredActionScheduler(...
+                        'clock', this.clock, ...
+                        'fhAction', @()this.setHexapodDeviceAndEnable(device),...
+                        'fhTrigger', @()this.apiHexapod.isInitialized(),...
+                        'cName', 'DASHexapodIndexing', ...
+                        'dDelay', 0.5, ...
+                        'dExpiration', 10, ...
+                        'lShowExpirationMessage', true);
+                    dafHexapodHome.dispatch();
+                
+                end
+                return % Return in either case, only proceed if initialized
+            end
             
             % Use coupled-axis bridge to create single axis control
             dHexapodR = [[-1 0 0 ; 0 0 1; 0 1 0], zeros(3); zeros(3), [-1 0 0 ; 0 0 1; 0 1 0]];  
@@ -434,42 +461,60 @@ classdef LSI_Control < handle
                 this.oHexapodBridges{k} = lsicontrol.device.CoupledAxisBridge(this.apiHexapod, k, 6);
                 this.oHexapodBridges{k}.setR(dHexapodR);
                 this.uiDeviceArrayHexapod{k}.setDevice(this.oHexapodBridges{k});
+                this.uiDeviceArrayHexapod{k}.turnOn();
+                this.uiDeviceArrayHexapod{k}.syncDestination();
             end
-            
-            if strcmp(questdlg('Connect hexapod?'), 'Yes')
-                for k = 1:6
-                     this.uiDeviceArrayHexapod{k}.turnOn();
-                     this.uiDeviceArrayHexapod{k}.syncDestination();
-                end
+        end
+        
+        function disconnectHexapod(this)
+            for k = 1:6
+                this.oHexapodBridges{k} = [];
+                this.uiDeviceArrayHexapod{k}.turnOff();
+                this.uiDeviceArrayHexapod{k}.setDevice([]);
             end
-            
+            this.apiHexapod = [];
         end
         
         function setGoniDeviceAndEnable(this, device)
             
             % Instantiate javaStageAPIs for communicating with devices
             this.apiGoni        = lsicontrol.javaAPI.CXROJavaStageAPI(...
-                                  'fhStageGetter',  @() device);
-           
+                                  'jStage', device);
+            % Check if we need to index stage:
+            if (~this.apiGoni.isInitialized())
+                if strcmp(questdlg('Goniometer is not referenced. Index now?'), 'Yes')
+                    this.apiGoni.home();
+                else
+                    return
+                end
+            end
             
-             % Use coupled-axis bridge to create single axis control
+            % Use coupled-axis bridge to create single axis control
             for k = 1:2
                 this.oGoniBridges{k} = lsicontrol.device.CoupledAxisBridge(this.apiGoni, k, 2);
                 this.uiDeviceArrayGoni{k}.setDevice(this.oGoniBridges{k});
+                this.uiDeviceArrayGoni{k}.turnOn();
+                this.uiDeviceArrayGoni{k}.syncDestination();
             end
-            
-            if strcmp(questdlg('Turn on Goniometer?'), 'Yes')
-                this.apiGoni.connect();
-                for k = 1:2
-                     this.uiDeviceArrayGoni{k}.turnOn();
-                     this.uiDeviceArrayGoni{k}.syncDestination();
-                end
+        end
+        
+         function disconnectGoni(this)
+            for k = 1:2
+                this.oGoniBridges{k} = [];
+                this.uiDeviceArrayGoni{k}.turnOff();
+                this.uiDeviceArrayGoni{k}.setDevice([]);
             end
+            this.apiGoni = [];
         end
         
         function setReticleAxisDevice(this, device, index)
             this.uiDeviceArrayReticle{index}.setDevice(device);
+            this.uiDeviceArrayReticle{index}.turnOn();
             this.uiDeviceArrayReticle{index}.syncDestination();
+        end
+        function disconnectReticleAxisDevice(this, index)
+            this.uiDeviceArrayReticle{index}.turnOff();
+            this.uiDeviceArrayReticle{index}.setDevice([]);
         end
         
         function build(this)
@@ -537,13 +582,13 @@ classdef LSI_Control < handle
             
             % Stage UI elements
             
-            dAxisPos = 20;
+            dAxisPos = 30;
             dLeft = 20;
             
             
            
              % Build comms and axes
-            this.uiCommSmarActSmarPod.build(this.hpStageControls, dLeft, dAxisPos);
+            this.uiCommSmarActSmarPod.build(this.hpStageControls, dLeft, dAxisPos - 7);
             this.uibHomeHexapod.build(this.hpStageControls, dLeft + 340, dAxisPos - 5, 95, 20);
             dAxisPos = dAxisPos + 20;
             for k = 1:length(this.cHexapodAxisLabels)
@@ -552,7 +597,7 @@ classdef LSI_Control < handle
                 dAxisPos = dAxisPos + this.dMultiAxisSeparation;
             end
             dAxisPos = dAxisPos + 20;
-            this.uiCommSmarActMcsGoni.build(this.hpStageControls,  dLeft, dAxisPos);
+            this.uiCommSmarActMcsGoni.build(this.hpStageControls,  dLeft, dAxisPos - 7);
             this.uibHomeGoni.build(this.hpStageControls, dLeft + 340, dAxisPos - 5, 95, 20);
             dAxisPos = dAxisPos + 20;
             for k = 1:length(this.cGoniLabels)
@@ -561,7 +606,7 @@ classdef LSI_Control < handle
                 dAxisPos = dAxisPos + this.dMultiAxisSeparation;
             end
             dAxisPos = dAxisPos + 20;
-            this.uiCommDeltaTauPowerPmac.build(this.hpStageControls,  dLeft, dAxisPos);
+            this.uiCommDeltaTauPowerPmac.build(this.hpStageControls,  dLeft, dAxisPos - 7);
             dAxisPos = dAxisPos + 20;
             for k = 1:length(this.cReticleLabels)
                 this.uiDeviceArrayReticle{k}.build(this.hpStageControls, ...
