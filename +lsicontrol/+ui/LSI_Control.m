@@ -472,6 +472,11 @@ classdef LSI_Control < handle
                 this.uiDeviceArrayHexapod{k}.turnOff();
                 this.uiDeviceArrayHexapod{k}.setDevice([]);
             end
+            
+            % Disconnect the stage:
+            this.apiHexapod.disconnect();
+            
+            % Delete the Stage API
             this.apiHexapod = [];
         end
         
@@ -504,6 +509,11 @@ classdef LSI_Control < handle
                 this.uiDeviceArrayGoni{k}.turnOff();
                 this.uiDeviceArrayGoni{k}.setDevice([]);
             end
+            
+            % Disconnect the stage:
+            this.apiGoni.disconnect();
+            
+            % Disconnect the API
             this.apiGoni = [];
         end
         

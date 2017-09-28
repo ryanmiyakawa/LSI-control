@@ -288,10 +288,6 @@ classdef LSI_Control < handle
                 'cText', 'Home Goni' , 'fhDirectCallback', @(src,evt)this.homeGoni ...
             );
 
-        
-
-
-
             this.uiSLHexapod = mic.ui.common.PositionRecaller(...
                 'cConfigPath', fullfile(this.cAppPath, '+config'), ...
                 'cName', 'Hexapod', ...
@@ -340,8 +336,8 @@ classdef LSI_Control < handle
         end
         function syncReticleDestinations(this)
          % Sync edit boxes
-            for k = 1:length(this.cGoniLabels)
-                this.uiDeviceArrayGoni{k}.syncDestination();
+            for k = 1:length(this.cReticleLabels)
+                this.uiDeviceArrayReticle{k}.syncDestination();
             end
         end
         
@@ -476,6 +472,10 @@ classdef LSI_Control < handle
                 this.uiDeviceArrayHexapod{k}.turnOff();
                 this.uiDeviceArrayHexapod{k}.setDevice([]);
             end
+            
+            % Disconnect the stage:
+            
+            
             this.apiHexapod = [];
         end
         
