@@ -9,6 +9,11 @@ classdef LSI_Control < handle
         clock = {}
         vendorDevice
         
+        % Colors:
+        dAcquireColor = [.97, 1, .9]
+        dFocusColor = [1, .9, 1]
+        dDisableColor = [.9, .8, .8]
+        dInactiveColor = [.9, .9, .9]
         
         % Comm handles:
          % {mic.ui.device.GetSetLogical 1x1}
@@ -16,7 +21,7 @@ classdef LSI_Control < handle
         uiCommDeltaTauPowerPmac
         uiCommSmarActMcsGoni
         uiCommSmarActSmarPod
-        
+        uiCommPIMTECamera
         
         % Instruments handle
         hInstruments
@@ -39,16 +44,20 @@ classdef LSI_Control < handle
         apiHexapod
         apiGoni
         apiReticle
-        cameraAPI
+        apiCamera
+        
         
         % Camera
         uiDeviceCameraTemperature
         uiDeviceCameraExposureTime
-        uiDeviceCameraExposureMode
+        
         uiButtonAcquire
         uiButtonFocus
         uiButtonSaveImage
         
+        uipbExposureProgress
+        
+        % Configuration
         uicHexapodConfigs
         uicGoniConfigs
         uicReticleConfigs
@@ -159,7 +168,16 @@ classdef LSI_Control < handle
                 'cLabel', 'SmarPod' ...
                 );
         
-  
+            this.uiCommPIMTECamera = mic.ui.device.GetSetLogical(...
+                'clock', this.clock, ...
+                'ceVararginCommandToggle', ceVararginCommandToggle, ...
+                'dWidthName', 130, ...
+                'lShowLabels', false, ...
+                'lShowDevice', false, ...
+                'lShowInitButton', false, ...
+                'cName', 'pimteCamera', ...
+                'cLabel', 'PI-MTE Camera' ...
+                );
             
             
         end
@@ -201,6 +219,7 @@ classdef LSI_Control < handle
         end
         
         function initUi(this)
+            
             
             % Init scalable axes:
             this.hsaAxes = mic.ui.axes.ScalableAxes();
@@ -265,21 +284,23 @@ classdef LSI_Control < handle
             );
         
         
-        
-        
             this.uiButtonAcquire = mic.ui.common.Button(...
-                'cText', 'Acquire' ...
+                'cText', 'Acquire', ...
+                'fhDirectCallback', @this.onAcquire ...
             );
+            
             this.uiButtonFocus = mic.ui.common.Button(...
-                'cText', 'Focus' ...
+                'cText', 'Focus', ...
+                'fhDirectCallback', @this.onFocus ...
             );
+             
+            
             this.uiButtonSaveImage = mic.ui.common.Button(...
-                'cText', 'Save image' ...
+                'cText', 'Save image', ...
+                'fhDirectCallback', @this.onSaveImage ...
             );
         
-            this.uibRotateCoordinates = mic.ui.common.Button(...
-                'cText', 'Rotate coordinates', 'fhDirectCallback', @this.launchRotationUI ...
-            );
+
             
             this.uibHomeHexapod = mic.ui.common.Button(...
                 'cText', 'Home Hexapod' , 'fhDirectCallback', @(src,evt)this.homeHexapod ...
@@ -305,9 +326,217 @@ classdef LSI_Control < handle
                 'hGetCallback', @this.getReticleRaw, ...
                 'hSetCallback', @this.setReticleRaw);
         
+            this.uipbExposureProgress = mic.ui.common.ProgressBar(...
+                'dColorFill', [.4, .4, .8], ...
+                'dColorBg', [1, 1, 1]);
+        end
+        
+
+%% Initializing devices
+
+        function setCameraDeviceAndEnable(this, device)
+            this.apiCamera = lsicontrol.javaAPI.APIPVCam( ...
+                'hDevice', device, ...
+                'fhWhileAcquiring', @(elapsedTime)this.whileAcquiring(elapsedTime), ...
+                'fhOnImageReady', @(data)this.onCameraImageReady(data) ...
+                );
+            
+            % Link UI to devices, let's try to inline them:
+            this.uiDeviceCameraTemperature.setDevice(...
+                 lsicontrol.device.InlineGetSetDevice(...
+                    'get', @()this.apiCamera.getTemperature(), ...
+                    'set', @(dVal)this.apiCamera.setTemperature(dVal) ...
+                 )...
+            );
+            this.uiDeviceCameraTemperature.turnOn();
+            this.uiDeviceCameraTemperature.syncDestination()
+            
+            this.uiDeviceCameraExposureTime.setDevice(...
+                 lsicontrol.device.InlineGetSetDevice(...
+                    'get', @()this.apiCamera.getExposureTime(), ...
+                    'set', @(dVal)this.apiCamera.setExposureTime(dVal) ...
+                 )...
+            );
+            this.uiDeviceCameraExposureTime.turnOn();
+            this.uiDeviceCameraExposureTime.syncDestination();
+        
+        end
+        
+        % Resets api, bridges, and disconnects hardware device.
+        function disconnectCamera(this)
+            this.uiDeviceCameraTemperature.turnOff();
+            this.uiDeviceCameraTemperature.setDevice([]);
+            
+            this.uiDeviceCameraExposureTime.turnOff();
+            this.uiDeviceCameraExposureTime.setDevice([]);
+            
+            % Disconnect the camera:
+            this.apiCamera.disconnect();
+            
+            % Delete the Stage API
+            this.apiCamera = [];
+        end
+
+        % Builds hexapod java api, connecting getSetNumber UI elements
+        % to the appropriate API hooks.  Device is already connected
+        function setHexapodDeviceAndEnable(this, device)
+            
+            % Instantiate javaStageAPIs for communicating with devices
+            this.apiHexapod 	= lsicontrol.javaAPI.CXROJavaStageAPI(...
+                                  'jStage', device);
+           
+            % Check if we need to index stage:
+            if (~this.apiHexapod.isInitialized())
+                if strcmp(questdlg('Hexapod is not referenced. Index now?'), 'Yes')
+                    this.apiHexapod.home();
+                     % Wait till hexapod has finished move:
+                    dafHexapodHome = mic.DeferredActionScheduler(...
+                        'clock', this.clock, ...
+                        'fhAction', @()this.setHexapodDeviceAndEnable(device),...
+                        'fhTrigger', @()this.apiHexapod.isInitialized(),...
+                        'cName', 'DASHexapodIndexing', ...
+                        'dDelay', 0.5, ...
+                        'dExpiration', 10, ...
+                        'lShowExpirationMessage', true);
+                    dafHexapodHome.dispatch();
+                
+                end
+                return % Return in either case, only proceed if initialized
+            end
+            
+            % Use coupled-axis bridge to create single axis control
+            dHexapodR = [[-1 0 0 ; 0 0 1; 0 1 0], zeros(3); zeros(3), [-1 0 0 ; 0 0 1; 0 1 0]];  
+            for k = 1:6
+                this.oHexapodBridges{k} = lsicontrol.device.CoupledAxisBridge(this.apiHexapod, k, 6);
+                this.oHexapodBridges{k}.setR(dHexapodR);
+                this.uiDeviceArrayHexapod{k}.setDevice(this.oHexapodBridges{k});
+                this.uiDeviceArrayHexapod{k}.turnOn();
+                this.uiDeviceArrayHexapod{k}.syncDestination();
+            end
+        end
+        
+        % Resets api, bridges, and disconnects hardware device.
+        function disconnectHexapod(this)
+            for k = 1:6
+                this.oHexapodBridges{k} = [];
+                this.uiDeviceArrayHexapod{k}.turnOff();
+                this.uiDeviceArrayHexapod{k}.setDevice([]);
+            end
+            
+            % Disconnect the stage:
+            this.apiHexapod.disconnect();
+            
+            % Delete the Stage API
+            this.apiHexapod = [];
+        end
+        
+         % Builds goni java api, connecting getSetNumber UI elements
+        % to the appropriate API hooks.  Device is already connected
+        function setGoniDeviceAndEnable(this, device)
+            
+            % Instantiate javaStageAPIs for communicating with devices
+            this.apiGoni        = lsicontrol.javaAPI.CXROJavaStageAPI(...
+                                  'jStage', device);
+            % Check if we need to index stage:
+            if (~this.apiGoni.isInitialized())
+                if strcmp(questdlg('Goniometer is not referenced. Index now?'), 'Yes')
+                    this.apiGoni.home();
+                else
+                    return
+                end
+            end
+            
+            % Use coupled-axis bridge to create single axis control
+            for k = 1:2
+                this.oGoniBridges{k} = lsicontrol.device.CoupledAxisBridge(this.apiGoni, k, 2);
+                this.uiDeviceArrayGoni{k}.setDevice(this.oGoniBridges{k});
+                this.uiDeviceArrayGoni{k}.turnOn();
+                this.uiDeviceArrayGoni{k}.syncDestination();
+            end
+        end
+        
+        % Resets api, bridges, and disconnects hardware device.
+        function disconnectGoni(this)
+            for k = 1:2
+                this.oGoniBridges{k} = [];
+                this.uiDeviceArrayGoni{k}.turnOff();
+                this.uiDeviceArrayGoni{k}.setDevice([]);
+            end
+            
+            % Disconnect the stage:
+            this.apiGoni.disconnect();
+            
+            % Disconnect the API
+            this.apiGoni = [];
+        end
+        
+        % These don't work yet but we need to hook this in
+        function setReticleAxisDevice(this, device, index)
+            this.uiDeviceArrayReticle{index}.setDevice(device);
+            this.uiDeviceArrayReticle{index}.turnOn();
+            this.uiDeviceArrayReticle{index}.syncDestination();
         end
         
         
+        function disconnectReticleAxisDevice(this, index)
+            this.uiDeviceArrayReticle{index}.turnOff();
+            this.uiDeviceArrayReticle{index}.setDevice([]);
+        end
+        
+%% Functions for getting and setting stages directly for Position recaller and hooks for camera
+        
+        % Camera methods:
+        
+        % Callback for what to do when image is ready from camera
+        function onCameraImageReady(this, data)
+            this.hsaAxes.imagesc(data);
+            this.uiButtonAcquire.setText('Acquire');
+            this.uiButtonAcquire.setColor(this.dAcquireColor);
+            this.uiButtonFocus.setText('Focus');
+            this.uiButtonFocus.setColor(this.dFocusColor);
+            
+            this.uipbExposureProgress.set(1);
+        end
+        
+        % Callback for what to do while acquisition is happening
+        function whileAcquiring(this, dElapsedTime)
+            dProgress = dElapsedTime/this.apiCamera.getExposureTime();
+            if dProgress > 1
+                dProgress = 1;
+            end
+            
+            this.uipbExposureProgress.set(dProgress);
+        end
+        
+        % Callback for the acquire button
+        function onAcquire(this)
+            if isempty(this.apiCamera)
+                return
+            end
+            
+            this.apiCamera.requestAcquisition();
+            this.uiButtonAcquire.setText('Acquiring...')
+            this.uiButtonAcquire.setColor(this.dDisableColor);
+            this.uiButtonFocus.setText('...')
+            this.uiButtonFocus.setColor(this.dInactiveColor);
+            
+            this.uipbExposureProgress.set(0);
+            
+        end
+        
+        % Callback for the focus button
+        function onFocus(this)
+            
+        end
+        
+        % Callback for the save button
+        function onSaveImage(this)
+            
+        end
+        
+        
+
+
         % Need to implement these methods:
         function positions = getReticleRaw(this)
             for k = 1:length(this.uiDeviceArrayReticle)
@@ -416,117 +645,8 @@ classdef LSI_Control < handle
                  end
              end
         end
-        
-%         function launchRotationUI(this)
-%             rc = mic.ui.common.RotationCorrectionUI('callback', @(Rt, rx, ry)this.rotateCoordinateSystem(Rt, rx, ry));
-%         end
-%         
-%         function rotateCoordinateSystem(this, R, rx, ry)
-%            for k = 1:6
-%                this.oHexapodBridges{k}.setR(R);
-%            end
-%            disp('Rotating coordinate system for hexapod bridges:');
-%            disp(R);
-%         end
-        
-        
-        function setHexapodDeviceAndEnable(this, device)
             
-            % Instantiate javaStageAPIs for communicating with devices
-            this.apiHexapod 	= lsicontrol.javaAPI.CXROJavaStageAPI(...
-                                  'jStage', device);
-           
-            % Check if we need to index stage:
-            if (~this.apiHexapod.isInitialized())
-                if strcmp(questdlg('Hexapod is not referenced. Index now?'), 'Yes')
-                    this.apiHexapod.home();
-                     % Wait till hexapod has finished move:
-                    dafHexapodHome = mic.DeferredActionScheduler(...
-                        'clock', this.clock, ...
-                        'fhAction', @()this.setHexapodDeviceAndEnable(device),...
-                        'fhTrigger', @()this.apiHexapod.isInitialized(),...
-                        'cName', 'DASHexapodIndexing', ...
-                        'dDelay', 0.5, ...
-                        'dExpiration', 10, ...
-                        'lShowExpirationMessage', true);
-                    dafHexapodHome.dispatch();
-                
-                end
-                return % Return in either case, only proceed if initialized
-            end
-            
-            % Use coupled-axis bridge to create single axis control
-            dHexapodR = [[-1 0 0 ; 0 0 1; 0 1 0], zeros(3); zeros(3), [-1 0 0 ; 0 0 1; 0 1 0]];  
-            for k = 1:6
-                this.oHexapodBridges{k} = lsicontrol.device.CoupledAxisBridge(this.apiHexapod, k, 6);
-                this.oHexapodBridges{k}.setR(dHexapodR);
-                this.uiDeviceArrayHexapod{k}.setDevice(this.oHexapodBridges{k});
-                this.uiDeviceArrayHexapod{k}.turnOn();
-                this.uiDeviceArrayHexapod{k}.syncDestination();
-            end
-        end
-        
-        function disconnectHexapod(this)
-            for k = 1:6
-                this.oHexapodBridges{k} = [];
-                this.uiDeviceArrayHexapod{k}.turnOff();
-                this.uiDeviceArrayHexapod{k}.setDevice([]);
-            end
-            
-            % Disconnect the stage:
-            this.apiHexapod.disconnect();
-            
-            % Delete the Stage API
-            this.apiHexapod = [];
-        end
-        
-        function setGoniDeviceAndEnable(this, device)
-            
-            % Instantiate javaStageAPIs for communicating with devices
-            this.apiGoni        = lsicontrol.javaAPI.CXROJavaStageAPI(...
-                                  'jStage', device);
-            % Check if we need to index stage:
-            if (~this.apiGoni.isInitialized())
-                if strcmp(questdlg('Goniometer is not referenced. Index now?'), 'Yes')
-                    this.apiGoni.home();
-                else
-                    return
-                end
-            end
-            
-            % Use coupled-axis bridge to create single axis control
-            for k = 1:2
-                this.oGoniBridges{k} = lsicontrol.device.CoupledAxisBridge(this.apiGoni, k, 2);
-                this.uiDeviceArrayGoni{k}.setDevice(this.oGoniBridges{k});
-                this.uiDeviceArrayGoni{k}.turnOn();
-                this.uiDeviceArrayGoni{k}.syncDestination();
-            end
-        end
-        
-         function disconnectGoni(this)
-            for k = 1:2
-                this.oGoniBridges{k} = [];
-                this.uiDeviceArrayGoni{k}.turnOff();
-                this.uiDeviceArrayGoni{k}.setDevice([]);
-            end
-            
-            % Disconnect the stage:
-            this.apiGoni.disconnect();
-            
-            % Disconnect the API
-            this.apiGoni = [];
-        end
-        
-        function setReticleAxisDevice(this, device, index)
-            this.uiDeviceArrayReticle{index}.setDevice(device);
-            this.uiDeviceArrayReticle{index}.turnOn();
-            this.uiDeviceArrayReticle{index}.syncDestination();
-        end
-        function disconnectReticleAxisDevice(this, index)
-            this.uiDeviceArrayReticle{index}.turnOff();
-            this.uiDeviceArrayReticle{index}.setDevice([]);
-        end
-        
+%% Build main figure
         function build(this)
             
             % Main figure
@@ -541,7 +661,7 @@ classdef LSI_Control < handle
                     'Color', [0.7 0.73 0.73]);
                 
            % Main Axes:
-            this.hsaAxes.build(this.hFigure, 880, 165, 540, 540)
+            this.hsaAxes.build(this.hFigure, 880, 120, 540, 540)
                 
             % Stage panel:
             this.hpStageControls = uipanel(...
@@ -570,7 +690,7 @@ classdef LSI_Control < handle
                 'Title', 'Camera control',...
                 'FontWeight', 'Bold',...
                 'Clipping', 'on',...
-                'Position', [880 730 540 120] ...
+                'Position', [880 670 540 180] ...
             );
            
 %             % Main control panel:
@@ -631,23 +751,25 @@ classdef LSI_Control < handle
            % this.uibRotateCoordinates.build(this.hpStageControls, 600, 130, 100, 40);
             
             % Camera UI elements
-            this.uiDeviceCameraTemperature.build(this.hpCameraControls, 10, 15);            
-            this.uiDeviceCameraExposureTime.build(this.hpCameraControls, 10, 45);
+            this.uiDeviceCameraTemperature.build(this.hpCameraControls, 10, 40);            
+            this.uiDeviceCameraExposureTime.build(this.hpCameraControls, 10, 70);
             
-%             this.uiFileWatcher.build(this.hpCameraControls, 20, 55);
-
-            this.uiButtonFocus.build(this.hpCameraControls, 20, 80, 100, 30);
-            this.uiButtonAcquire.build(this.hpCameraControls, 160, 80, 100, 30);
-            this.uiButtonSaveImage.build(this.hpCameraControls, 300, 80, 100, 30);
+            this.uiCommPIMTECamera.build    (this.hpCameraControls, 10,  15);
+            
+            this.uiButtonFocus.build        (this.hpCameraControls, 10,  110, 100, 30);
+            this.uiButtonAcquire.build      (this.hpCameraControls, 130, 110, 100, 30);
+            this.uiButtonSaveImage.build    (this.hpCameraControls, 250, 110, 100, 30);
+            
+            this.uipbExposureProgress.build(this.hpCameraControls, 10, 150);
       
             % Position recall elements
-           % this.uiButtonAdd
-%         
-%         
-%             this.uiDeviceMode.build(this.hFigure, 10, 130);
-%             this.uiDeviceAwesome.build(this.hFigure, 10, 170);
-%             this.uiToggleAll.build(this.hFigure, 10, 210, 120, 30);
-%             this.uiButtonUseDeviceData.build(this.hFigure, 10, 250, 120, 30);
+            
+            % Button colors:
+            this.uiButtonAcquire.setText('Acquire')
+            this.uiButtonAcquire.setColor(this.dAcquireColor);
+            this.uiButtonFocus.setText('Focus')
+            this.uiButtonFocus.setColor(this.dFocusColor);
+            
             
         end
         
