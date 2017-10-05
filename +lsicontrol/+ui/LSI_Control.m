@@ -5,13 +5,14 @@ classdef LSI_Control < handle
         cAppPath = fileparts(mfilename('fullpath'))
         cJavaLibPath = 'C:\Users\cxrodev\Documents\MATLAB\metdev\LSI-control';
         cJavaLibName = 'Met5Instruments.jar';
+        cDataPath
         cConfigPath
         clock = {}
         vendorDevice
         
         % Colors:
         dAcquireColor = [.97, 1, .9]
-        dFocusColor = [1, .9, 1]
+        dFocusColor = [.93, .9, 1]
         dDisableColor = [.9, .8, .8]
         dInactiveColor = [.9, .9, .9]
         
@@ -56,6 +57,8 @@ classdef LSI_Control < handle
         uiButtonSaveImage
         
         uipbExposureProgress
+        
+        uieImageName
         
         % Configuration
         uicHexapodConfigs
@@ -127,6 +130,29 @@ classdef LSI_Control < handle
 %             this.build();
             
             %this.loadStateFromDisk();
+            
+            this.initDataPath();
+           
+            
+            
+        end
+        
+        function initDataPath(this)
+             % Make data 
+            [cDirThis, cName, cExt] = fileparts(mfilename('fullpath'));
+            this.cDataPath = fullfile(cDirThis, '..', '..', '..', 'Data');
+            
+            sFils = dir(fullfile(cDirThis, '..', '..', '..'));
+            lDataFolderExist = false;
+            for k = 1:length(sFils)
+                if strcmp(sFils(k).name, 'Data')
+                    lDataFolderExist = true;
+                end
+            end
+            if ~lDataFolderExist
+                mkdir(this.cDataPath);
+            end
+                
             
         end
         
@@ -300,6 +326,10 @@ classdef LSI_Control < handle
                 'fhDirectCallback', @this.onSaveImage ...
             );
         
+            this.uieImageName = mic.ui.common.Edit(...
+                'cLabel', 'Image name' ...
+            );
+        
 
             
             this.uibHomeHexapod = mic.ui.common.Button(...
@@ -328,7 +358,9 @@ classdef LSI_Control < handle
         
             this.uipbExposureProgress = mic.ui.common.ProgressBar(...
                 'dColorFill', [.4, .4, .8], ...
-                'dColorBg', [1, 1, 1]);
+                'dColorBg', [1, 1, 1], ...
+                'dHeight', 15, ...
+                'dWidth', 455);
         end
         
 
@@ -496,6 +528,17 @@ classdef LSI_Control < handle
             this.uiButtonFocus.setColor(this.dFocusColor);
             
             this.uipbExposureProgress.set(1);
+            this.uipbExposureProgress.setColor([.2, .8, .2]);
+            
+            % update image name:
+            [path, nPNGs] = this.getDataSubdirectoryPath();
+            
+            cFileName = fullfile(path, sprintf('%0.3d.png', nPNGs + 1));
+            [~, name, ext] = fileparts(cFileName);
+            
+            this.uieImageName.set([name, ext]);
+            this.uiButtonSaveImage.setColor([.1, .9, .3]);
+            
         end
         
         % Callback for what to do while acquisition is happening
@@ -511,17 +554,20 @@ classdef LSI_Control < handle
         % Callback for the acquire button
         function onAcquire(this)
             if isempty(this.apiCamera)
+                msgbox('No camera connected!');
                 return
             end
             
-            this.apiCamera.requestAcquisition();
+            
             this.uiButtonAcquire.setText('Acquiring...')
             this.uiButtonAcquire.setColor(this.dDisableColor);
             this.uiButtonFocus.setText('...')
             this.uiButtonFocus.setColor(this.dInactiveColor);
             
             this.uipbExposureProgress.set(0);
+            this.uipbExposureProgress.setColor([.4, .4, .8]);
             
+            this.apiCamera.requestAcquisition();
         end
         
         % Callback for the focus button
@@ -531,11 +577,137 @@ classdef LSI_Control < handle
         
         % Callback for the save button
         function onSaveImage(this)
+            % Check if image is ready:
+            if ~this.apiCamera.lIsImageReady || isempty(this.apiCamera.dCurrentImage)
+                msgbox('No image available');
+                return
+            end
+            dImg = this.apiCamera.dCurrentImage;
+            
+            cFileName = this.uieImageName.get();
+            
+            path = this.getDataSubdirectoryPath();
+           
+            this.saveAndLogImage(path, cFileName, dImg);
+            imwrite(dImg, fullfile(path, cFileName), 'png');
+            
+            this.uipbExposureProgress.set(0);
+            this.uipbExposureProgress.setColor([.95, .95, .95]);
+            this.uiButtonSaveImage.setColor(this.dInactiveColor);
             
         end
         
+        % get data subdirectory
+        function [path, nPNGs] = getDataSubdirectoryPath(this)
+            % Today's date:
+            cSubDirName = datestr(now, 29);
+            
+            sFils = dir(this.cDataPath);
+            lDataFolderExist = false;
+            for k = 1:length(sFils)
+                if strcmp(sFils(k).name, cSubDirName)
+                    lDataFolderExist = true;
+                end
+            end
+            path = fullfile(this.cDataPath, cSubDirName);
+            if ~lDataFolderExist
+                mkdir(path);
+            end
+            
+            nPNGs = length(dir(fullfile(path, '*.png')));
+            
+        end
         
+        % When an image is saved, make sure to log it
+        function saveAndLogImage(this, cSubDirPath, cFileName, dImg)
+            
+            % Make log structure:
+            stLog = struct();
+            
+            % Add timestamp
+            stLog.timeStamp = datestr(now, 31);
+            
+            stLog.fileName = cFileName;
+            
+            % Add Hexapod coordinates:
+            if isempty(this.apiHexapod)
+                stLog.hexapodX = 'off';
+                stLog.hexapodY = 'off';
+                stLog.hexapodZ = 'off';
+                stLog.hexapodRx = 'off';
+                stLog.hexapodRy = 'off';
+                stLog.hexapodRz = 'off';
+            else 
+                dHexapodPositions = this.getHexapodRaw(this);
+                stLog.hexapodX = sprintf('%0.6f', dHexapodPositions(1));
+                stLog.hexapodY = sprintf('%0.6f', dHexapodPositions(2));
+                stLog.hexapodZ = sprintf('%0.6f', dHexapodPositions(3));
+                stLog.hexapodRx = sprintf('%0.6f', dHexapodPositions(4));
+                stLog.hexapodRy = sprintf('%0.6f', dHexapodPositions(5));
+                stLog.hexapodRz = sprintf('%0.6f', dHexapodPositions(6));
+            end
+            
+            % Add Goni coordinates:
+            if isempty(this.apiGoni)
+                stLog.goniRx = 'off';
+                stLog.goniRy = 'off';
+            else 
+                dGoniPositions = this.getGoniRaw(this);
+                stLog.goniRx = sprintf('%0.6f', dGoniPositions(1));
+                stLog.goniRy = sprintf('%0.6f', dGoniPositions(2));
+            end
+            
+            % Add Reticle coordinates:
+            
+            % Add temperature and exposure times:
+            if isempty(this.apiCamera)
+                stLog.cameraTemp = 'off';
+                stLog.cameraExposureTime = 'off'; 
+            else
+                stLog.cameraTemp = this.apiCamera.getTemperature();
+                stLog.cameraExposureTime = this.apiCamera.getExposureTime(); 
+            end
+            
+            
+            % Create log file and headers if necessary
+            nl = java.lang.System.getProperty('line.separator').char;
 
+            ceFieldNames = fieldnames(stLog);
+            
+            sFils = dir(cSubDirPath);
+            lDataFileExist = false;
+            for k = 1:length(sFils)
+                if strcmp(sFils(k).name, 'log.csv')
+                    lDataFileExist = true;
+                end
+            end
+            logPath = fullfile(cSubDirPath, 'log.csv');
+            fid = fopen(logPath, 'a');
+            cWriteStr = '';
+            if ~lDataFileExist
+                for k = 1:length(ceFieldNames)
+                    cWriteStr = sprintf('%s,', ceFieldNames{k});
+                end
+                cWriteStr(end) = [];
+                cWriteStr = [cWriteStr nl];
+            end
+            
+            % Write structure fields
+            for k = 1:length(ceFieldNames)
+                cWriteStr = sprintf('%s%s,',cWriteStr, stLog.(ceFieldNames{k}));
+            end
+            cWriteStr(end) = [];
+            cWriteStr = [cWriteStr nl];
+            fwrite(fid, cWriteStr);
+            fclose(fid);
+
+            % Save .mat file
+            [~, fl, ext] = fileparts(cFileName);
+            save(fullfile(cSubDirPath, [fl '.mat']), 'stLog', 'dImg');
+
+        end
+        
+        %%
 
         % Need to implement these methods:
         function positions = getReticleRaw(this)
@@ -661,7 +833,7 @@ classdef LSI_Control < handle
                     'Color', [0.7 0.73 0.73]);
                 
            % Main Axes:
-            this.hsaAxes.build(this.hFigure, 880, 120, 540, 540)
+            this.hsaAxes.build(this.hFigure, 880, 10, 540, 540)
                 
             % Stage panel:
             this.hpStageControls = uipanel(...
@@ -690,7 +862,7 @@ classdef LSI_Control < handle
                 'Title', 'Camera control',...
                 'FontWeight', 'Bold',...
                 'Clipping', 'on',...
-                'Position', [880 670 540 180] ...
+                'Position', [880 610 540 240] ...
             );
            
 %             % Main control panel:
@@ -758,9 +930,12 @@ classdef LSI_Control < handle
             
             this.uiButtonFocus.build        (this.hpCameraControls, 10,  110, 100, 30);
             this.uiButtonAcquire.build      (this.hpCameraControls, 130, 110, 100, 30);
-            this.uiButtonSaveImage.build    (this.hpCameraControls, 250, 110, 100, 30);
+            this.uiButtonSaveImage.build    (this.hpCameraControls, 330, 165, 100, 20);
             
-            this.uipbExposureProgress.build(this.hpCameraControls, 10, 150);
+            this.uieImageName.build         (this.hpCameraControls, 10, 150, 300, 25);
+            
+            
+            this.uipbExposureProgress.build(this.hpCameraControls, 10, 200);
       
             % Position recall elements
             
