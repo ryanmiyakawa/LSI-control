@@ -47,6 +47,9 @@ classdef LSI_Control < handle
         apiReticle
         apiCamera
         
+        % Scans:
+        uitgScan
+        ceTabList = {'1D-scan', '2D-scan', '3D-scan', 'LSI P/S image acquisition'}
         
         % Camera
         uiDeviceCameraTemperature
@@ -90,7 +93,17 @@ classdef LSI_Control < handle
         
         uiFileWatcher
               
+        % axes:
+        uitgAxes
         hsaAxes
+        aScanMonitors
+        
+        % Scan setups
+        ss1D
+        ss2D
+        ss3D
+        ssExp
+        
         hFigure
     end
     
@@ -361,6 +374,43 @@ classdef LSI_Control < handle
                 'dColorBg', [1, 1, 1], ...
                 'dHeight', 15, ...
                 'dWidth', 455);
+            
+            
+            % Scan tab group:
+            this.uitgScan = mic.ui.common.Tabgroup('ceTabNames', this.ceTabList);
+            
+            % Scans:
+            this.ss1D = mic.ui.common.ScanSetup( ...
+                            'cLabel', 'Saved pos', ...
+                            'dScanAxes', 1, ...
+                            'cName', '1D-Scan', ...
+                            'cConfigPath', fullfile(this.cAppPath, '+config')...
+                        );
+                    
+            this.ss2D = mic.ui.common.ScanSetup( ...
+                            'cLabel', 'Saved pos', ...
+                            'dScanAxes', 2, ...
+                            'cName', '2D-Scan', ...
+                            'cConfigPath', fullfile(this.cAppPath, '+config')...
+                        );
+                    
+            this.ss3D = mic.ui.common.ScanSetup( ...
+                            'cLabel', 'Saved pos', ...
+                            'dScanAxes', 3, ...
+                            'cName', '3D-Scan', ...
+                            'cConfigPath', fullfile(this.cAppPath, '+config')...
+                        );
+                    
+            this.ssExp = mic.ui.common.ScanSetup( ...
+                            'cLabel', 'Saved pos', ...
+                            'dScanAxes', 3, ...
+                            'cName', 'Exp-Scan', ...
+                            'cConfigPath',fullfile(this.cAppPath, '+config')...
+                        );
+            
+            
+            % Axes tab group:
+            this.uitgAxes = mic.ui.common.Tabgroup('ceTabNames', {'Camera', 'Scan monitor'});
         end
         
 
@@ -664,8 +714,8 @@ classdef LSI_Control < handle
                 stLog.cameraTemp = 'off';
                 stLog.cameraExposureTime = 'off'; 
             else
-                stLog.cameraTemp = this.apiCamera.getTemperature();
-                stLog.cameraExposureTime = this.apiCamera.getExposureTime(); 
+                stLog.cameraTemp = sprintf('%0.1f', this.apiCamera.getTemperature());
+                stLog.cameraExposureTime = sprintf('%0.4f', this.apiCamera.getExposureTime()); 
             end
             
             
@@ -686,7 +736,7 @@ classdef LSI_Control < handle
             cWriteStr = '';
             if ~lDataFileExist
                 for k = 1:length(ceFieldNames)
-                    cWriteStr = sprintf('%s,', ceFieldNames{k});
+                    cWriteStr = sprintf('%s%s,',cWriteStr, ceFieldNames{k});
                 end
                 cWriteStr(end) = [];
                 cWriteStr = [cWriteStr nl];
@@ -832,8 +882,12 @@ classdef LSI_Control < handle
                     'Menubar','none', ...
                     'Color', [0.7 0.73 0.73]);
                 
+           % Axes:
+           
+           
            % Main Axes:
-            this.hsaAxes.build(this.hFigure, 880, 10, 540, 540)
+           this.uitgAxes.build(this.hFigure, 880, 10, 540, 590);
+           this.hsaAxes.build(this.uitgAxes.getTabByName('Camera'), 10, 10, 520, 520);
                 
             % Stage panel:
             this.hpStageControls = uipanel(...
@@ -842,6 +896,7 @@ classdef LSI_Control < handle
                 'Title', 'Stage control',...
                 'FontWeight', 'Bold',...
                 'Clipping', 'on',...
+                'BorderWidth',0, ... 
                 'Position', [10 250 490 600] ...
             );
         
@@ -852,6 +907,7 @@ classdef LSI_Control < handle
                 'Title', 'Position recall and coordinate transform',...
                 'FontWeight', 'Bold',...
                 'Clipping', 'on',...
+                'BorderWidth',0, ... 
                 'Position', [510 250 360 600] ...
                 );
         
@@ -862,23 +918,27 @@ classdef LSI_Control < handle
                 'Title', 'Camera control',...
                 'FontWeight', 'Bold',...
                 'Clipping', 'on',...
+                'BorderWidth',0, ... 
                 'Position', [880 610 540 240] ...
             );
-           
-%             % Main control panel:
-%             this.hpMainControls = uipanel(...
-%                 'Parent', this.hFigure,...
-%                 'Units', 'pixels',...
-%                 'Title', 'Main control',...
-%                 'FontWeight', 'Bold',...
-%                 'Clipping', 'on',...
-%                 'Position', [40 700 720 120] ...
-%                 );
+        
+            % Scan controls:
+            this.uitgScan.build(this.hFigure, 10, 10, 860, 230);
+
+             % Scans:
+            this.ss1D.build(this.uitgScan.getTabByIndex(1), 10, 10, 850, 180); 
+                    
+            this.ss2D.build(this.uitgScan.getTabByIndex(2), 10, 10, 850, 180);
+                    
+            this.ss3D.build(this.uitgScan.getTabByIndex(3), 10, 10, 850, 180);
+                    
+            this.ssExp.build(this.uitgScan.getTabByIndex(4), 10, 10, 850, 180);
+            
                 
             % Position recall:
-            this.uiSLHexapod.build(this.hpPositionRecall, 10, 410, 335, 190);
-            this.uiSLGoni.build(this.hpPositionRecall, 10, 210, 335, 190);
-            this.uiSLReticle.build(this.hpPositionRecall, 10, 10, 335, 190);
+            this.uiSLHexapod.build(this.hpPositionRecall, 10, 390, 340, 188);
+            this.uiSLGoni.build(this.hpPositionRecall, 10, 200, 340, 188);
+            this.uiSLReticle.build(this.hpPositionRecall, 10, 10, 340, 188);
             
             
             
