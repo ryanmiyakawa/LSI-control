@@ -519,7 +519,7 @@ classdef LSI_Control < handle
             end
             
             % Use coupled-axis bridge to create single axis control
-            dHexapodR = [[-1 0 0 ; 0 0 1; 0 1 0], zeros(3); zeros(3), [-1 0 0 ; 0 0 1; 0 1 0]];  
+            dHexapodR = [[1 0 0 ; 0 1 0; 0 0 1], zeros(3); zeros(3), [1 0 0 ; 0 1 0; 0 0 1]];  
             for k = 1:6
                 this.oHexapodBridges{k} = lsicontrol.device.CoupledAxisBridge(this.apiHexapod, k, 6);
                 this.oHexapodBridges{k}.setR(dHexapodR);
