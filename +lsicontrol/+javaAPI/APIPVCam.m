@@ -7,10 +7,14 @@ classdef APIPVCam < mic.Base
         hDevice
         clock
         
+        dExposureTime = -1 % this is not stored on device so we have to handle it here
+        
         fhOnImageReady % Function to call when image is finished
         fhWhileAcquiring = @(elapsedTime)[]% Function to call on trigger
         
         lIsImageReady
+        
+        
         dCurrentImage = []
         
         lIsFocusing = false
@@ -36,6 +40,10 @@ classdef APIPVCam < mic.Base
             if isempty(this.clock)
                 this.initDefaultClock();
             end
+            
+            % Init exposure time, which calls cameraSettings, which needs
+            % to be set before an acquisition can happen:
+            this.setExposureTime(0.1);
         end
         
         function initDefaultClock(this)
@@ -44,40 +52,67 @@ classdef APIPVCam < mic.Base
        
         % Replace these with proper getter and setter functions:
         function setTemperature(this, dVal)
-            this.hDevice.setTemperature(dVal);% ----- Replace with proper function
+            this.hDevice.setTmpSetpoint(dVal);
         end
         function dT = getTemperature(this)
-            dT = this.hDevice.getTemperature();% ----- Replace with proper function
+            dT = this.hDevice.getTmp();
             
         end
         function setExposureTime(this, dVal)
-            this.hDevice.setExposureTime(dVal);% ----- Replace with proper function
+            
+            % Set exposure time via camera settings
+            lVal = this.hDevice.cameraSettings(false, dVal, 0, 0, 2047, 2047, 1, 1);
+            if ~lVal
+                msgbox('CAMERA EXP TIME/ROI SET FAILED');
+            end
+            this.dExposureTime = dVal;
         end
+        
         function dS = getExposureTime(this)
-             dS = this.hDevice.getExposureTime();% ----- Replace with proper function
+             dS = this.dExposureTime;
+        end
+        
+        function lVal = connect(this)
+            lVal = this.hDevice.initCamera(0);
+            if ~lVal
+                msgbox('CAMERA INIT FAILED');
+            end
         end
         
         function disconnect(this)
-             this.hDevice.disconnect();% ----- Replace with proper function
+             lVal = this.hDevice.uninitCamera();
+             if ~lVal
+                msgbox('CAMERA UNINIT FAILED');
+            end
         end
+        
         function lVal = isConnected(this)
-            lVal = this.hDevice.isConnected();% ----- Replace with proper function
+            lVal = this.hDevice.isInitialized();
         end
         
         % -------------
         
         function requestAcquisition(this)
+            
+            if (this.dExposureTime <= 0)
+                msgbox('Need positive exposure time setting');
+                return
+            end
+            
             fprintf('APICamera:Requesting acquisition\n');
             this.lIsImageReady = false;
             
-            this.hDevice.acquire();  % ----- Replace with proper function
+            if ~this.hDevice.startCapture()
+                msgbox('CAMERA ACQUISITION FAILED TO START')
+                return;
+            end
             
             this.dTStart = tic;
             
             dasAcquisition = mic.DeferredActionScheduler(...
                 'clock', this.clock, ...
                 'fhAction', @()this.acquisitionHandler(),...
-                'fhTrigger', @()this.checkImageStatus(),... % ----- Replace with proper function
+                'fhTrigger', @()this.checkImageStatus(),... 
                 'cName', 'DASCameraAcquisition2', ...
                 'dDelay', 0.3, ...
                 'dExpiration', 100, ...
@@ -86,8 +121,18 @@ classdef APIPVCam < mic.Base
             
         end
         
+        
+        % return true if acquisition is finished
         function lVal = checkImageStatus(this)
-            lVal = this.hDevice.isImageReady();
+            oData = this.hDevice.getImage();
+            
+            if isempty(oData)
+                lVal = false;
+            else
+                lVal = true;
+                this.dCurrentImage = oData; % Set image here
+            end
+            
             
             % Compute elapsed time
             this.fhWhileAcquiring(toc(this.dTStart));
@@ -96,7 +141,6 @@ classdef APIPVCam < mic.Base
         
         function acquisitionHandler(this)
             fprintf('APICamera:Acquisition came back\n');
-            this.dCurrentImage = this.hDevice.getImage(); % ----- Replace with proper function
             this.lIsImageReady = true;
             this.fhOnImageReady(this.dCurrentImage);
         end

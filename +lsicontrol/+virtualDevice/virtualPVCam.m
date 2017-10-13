@@ -9,6 +9,7 @@ classdef virtualPVCam < mic.Base
         
         lIsImageReady
         lIsConnected = false
+        lCaptureMode = false
         dCurrentImage = []
         
         dExposureTime = 1
@@ -28,29 +29,38 @@ classdef virtualPVCam < mic.Base
             this.lIsConnected = true;
         end
         
-        function disconnect(this)
-            this.lIsConnected = false;
+        function lVal = initCamera(this, index)
+            this.lIsConnected = true;
+            lVal = true;
         end
         
-        function lVal = isConnected(this)
+        function lVal = uninitCamera(this)
+            this.lIsConnected = false;
+            lVal = true;
+        end
+        
+        function lVal = isInitialized(this)
             lVal = this.lIsConnected();
         end
        
-        function setTemperature(this, dVal)
+        function setTmpSetpoint(this, dVal)
              this.dTemperature = dVal;
         end
         
-        function dT = getTemperature(this)
+        function dT = getTmp(this)
             dT = this.dTemperature;
         end
-        function setExposureTime(this, dVal)
-            this.dExposureTime = dVal;
-        end
-        function dVal = getExposureTime(this)
-            dVal = this.dExposureTime;
-        end
         
-        function acquire(this)
+        function lVal = cameraSettings(this, lCaptureMode, dExposureTime,...
+                dROI1, dROI2, dROI3, dROI4, xbin, ybin)
+            this.lCaptureMode = lCaptureMode;
+            this.dExposureTime = dExposureTime;
+            
+            lVal = true;
+        end
+
+        
+        function lVal = startCapture(this)
             this.lIsImageReady = false;
             
             dTStart = tic;
@@ -65,6 +75,7 @@ classdef virtualPVCam < mic.Base
                 'lShowExpirationMessage', true);
             dasAcquisition.dispatch();
             
+            lVal = true;
         end
         
         function acquisitionHandler(this)
@@ -85,13 +96,24 @@ classdef virtualPVCam < mic.Base
             
         end
 
+        
+        % Used to both check if the image is ready and to get the image
+        % when it is ready.  Return "null" if not ready yet
+        function oData = getImage(this)
+            if this.isImageReady()
+                oData = this.dCurrentImage;
+            else
+                oData = [];
+            end
+            
+            this.lIsImageReady = false;
+        end
+        
         % Accessors
         function lVal = isImageReady(this)
             lVal = this.lIsImageReady;
         end
-        function dImg = getImage(this)
-            dImg = this.dCurrentImage;
-        end
+
         
     end
     

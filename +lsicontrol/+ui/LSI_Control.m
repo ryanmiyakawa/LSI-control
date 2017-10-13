@@ -99,12 +99,20 @@ classdef LSI_Control < handle
         aScanMonitors
         
         % Scan setups
+        scanHandler
         ss1D
         ss2D
         ss3D
         ssExp
         
+        lAutoSaveImage
+        lIsScanAcquiring = false % whether we're currently in a "scan acquire"
+        lIsScanning = false
+        
+        
         hFigure
+        
+        
     end
     
     properties (Constant)
@@ -120,6 +128,11 @@ classdef LSI_Control < handle
     
     properties (Access = private)
         cDirSave
+    end
+    
+    events
+        eImageAcquired
+        eImageSaved
     end
     
     methods
@@ -384,28 +397,44 @@ classdef LSI_Control < handle
                             'cLabel', 'Saved pos', ...
                             'dScanAxes', 1, ...
                             'cName', '1D-Scan', ...
-                            'cConfigPath', fullfile(this.cAppPath, '+config')...
+                            'u8selectedDefaults', uint8(1),...
+                            'cConfigPath', fullfile(this.cAppPath, '+config'), ...
+                            'fhOnScanButtonPress', ...
+                                    @(ceScanAxisNames, ceScanStates, cOutputDevice)...
+                                            this.onScan(ceScanAxisNames, ceScanStates, cOutputDevice) ...
                         );
                     
             this.ss2D = mic.ui.common.ScanSetup( ...
                             'cLabel', 'Saved pos', ...
                             'dScanAxes', 2, ...
                             'cName', '2D-Scan', ...
-                            'cConfigPath', fullfile(this.cAppPath, '+config')...
+                            'u8selectedDefaults', uint8([1, 2]),...
+                            'cConfigPath', fullfile(this.cAppPath, '+config'), ...
+                            'fhOnScanButtonPress', ...
+                                    @(ceScanAxisNames, ceScanStates, cOutputDevice)...
+                                            this.onScan(ceScanAxisNames, ceScanStates, cOutputDevice) ...
                         );
                     
             this.ss3D = mic.ui.common.ScanSetup( ...
                             'cLabel', 'Saved pos', ...
                             'dScanAxes', 3, ...
                             'cName', '3D-Scan', ...
-                            'cConfigPath', fullfile(this.cAppPath, '+config')...
+                            'u8selectedDefaults', uint8([1, 2, 3]),...
+                            'cConfigPath', fullfile(this.cAppPath, '+config'), ...
+                            'fhOnScanButtonPress', ...
+                                    @(ceScanAxisNames, ceScanStates, cOutputDevice)...
+                                            this.onScan(ceScanAxisNames, ceScanStates, cOutputDevice) ...
                         );
                     
             this.ssExp = mic.ui.common.ScanSetup( ...
                             'cLabel', 'Saved pos', ...
-                            'dScanAxes', 3, ...
+                            'dScanAxes', 2, ...
                             'cName', 'Exp-Scan', ...
-                            'cConfigPath',fullfile(this.cAppPath, '+config')...
+                            'u8selectedDefaults', uint8([11, 9]),...
+                            'cConfigPath',fullfile(this.cAppPath, '+config'), ...
+                            'fhOnScanButtonPress', ...
+                                    @(ceScanAxisNames, ceScanStates, cOutputDevice)...
+                                            this.onScan(ceScanAxisNames, ceScanStates, cOutputDevice) ...
                         );
             
             
@@ -422,6 +451,9 @@ classdef LSI_Control < handle
                 'fhWhileAcquiring', @(elapsedTime)this.whileAcquiring(elapsedTime), ...
                 'fhOnImageReady', @(data)this.onCameraImageReady(data) ...
                 );
+            
+            % connect to camera
+            this.apiCamera.connect();
             
             % Link UI to devices, let's try to inline them:
             this.uiDeviceCameraTemperature.setDevice(...
@@ -589,6 +621,13 @@ classdef LSI_Control < handle
             this.uieImageName.set([name, ext]);
             this.uiButtonSaveImage.setColor([.1, .9, .3]);
             
+            % If we're currently during a scan acquisition, automatically
+            % call the save function.  This is a little sloppy, we can
+            % instead implement this as an events, although that also is
+            % not ideal.
+            if (this.lIsScanAcquiring)
+                this.onSaveImage();
+            end
         end
         
         % Callback for what to do while acquisition is happening
@@ -607,7 +646,6 @@ classdef LSI_Control < handle
                 msgbox('No camera connected!');
                 return
             end
-            
             
             this.uiButtonAcquire.setText('Acquiring...')
             this.uiButtonAcquire.setColor(this.dDisableColor);
@@ -645,6 +683,11 @@ classdef LSI_Control < handle
             this.uipbExposureProgress.setColor([.95, .95, .95]);
             this.uiButtonSaveImage.setColor(this.dInactiveColor);
             
+            
+            % If we're "scan acquiring", flag that we are now finished
+            if (this.lIsScanAcquiring)
+                this.lIsScanAcquiring = false;
+            end
         end
         
         % get data subdirectory
@@ -665,7 +708,6 @@ classdef LSI_Control < handle
             end
             
             nPNGs = length(dir(fullfile(path, '*.png')));
-            
         end
         
         % When an image is saved, make sure to log it
@@ -759,6 +801,7 @@ classdef LSI_Control < handle
         
         %%
 
+        % -------------------------*****************----------------------
         % Need to implement these methods:
         function positions = getReticleRaw(this)
             for k = 1:length(this.uiDeviceArrayReticle)
@@ -771,7 +814,7 @@ classdef LSI_Control < handle
                 this.uiDeviceArrayReticle{k}.setAxesPosition(); %#ok<AGROW>
             end
         end
-        
+        % -------------------------*****************----------------------
         
         function syncHexapodDestinations(this)
          % Sync edit boxes
@@ -868,6 +911,123 @@ classdef LSI_Control < handle
              end
         end
             
+%% Set up scans:
+
+% State array needs to be structure with property values
+
+        function onScan(this, stateList, u8OutputIdx)
+            
+            % Build "scan recipe" from scan states 
+            stRecipe.values = stateList; % enumerable list of states that can be read by setState
+            stRecipe.unit = struct('unit', 'unit'); % not sure if we need units really, but let's fix later
+                        
+            fhSetState = @(stUnit, stState) this.setScanAxisDevicesToState(stState);
+            fhIsAtState = @(stUnit, stState) this.areScanAxisDevicesAtState(stState);
+            fhAcquire = @(stUnit, stState) this.scanAcquire(stState, u8OutputIdx);
+            fhIsAcquired =  @(stUnit, stState) this.scanIsAcquired(stState, u8OutputIdx);
+            fhOnComplete =  @(stUnit, stState) this.onScanComplete();
+            fhOnAbort =  @(stUnit, stState) this.onScanAbort();
+            
+            % Create a new scan:
+            this.scanHandler = mic.Scan(this.clock, ...
+                                        stRecipe, ...
+                                        fhSetState, ...
+                                        fhIsAtState, ...
+                                        fhAcquire, ...
+                                        fhIsAcquired, ...
+                                        fhOnComplete, ...
+                                        fhOnAbort ...
+                                        );
+            
+            % Start scanning
+            this.lIsScanning = true;
+            this.scanHandler.start();
+        end
+        
+        % Sets device to enumerated state
+        function setScanAxisDevicesToState(this, stState)
+            dAxes = stState.axes;
+            dVals = stState.values;
+            
+            for k = 1:length(dIdx)
+                dVal = dVals(k);
+                dAxis = dAxes(k);
+                switch dAxis
+                    case {1, 2, 3, 4, 5, 6} % Hexapod
+                        this.uiDeviceArrayHexapod{dAxis}.setDestCal(dVal);
+                        this.uiDeviceArrayHexapod{dAxis}.moveToDest();
+                    case {7, 8} % Goni
+                        this.uiDeviceArrayGoni{dAxis - 6}.setDestCal(dVal);
+                        this.uiDeviceArrayHexapod{dAxis}.moveToDest();
+                    case {9, 10, 11, 12, 13} % Reticle
+                        this.uiDeviceArrayReticle{dAxis - 8}.setDestCal(dVal);
+                        this.uiDeviceArrayHexapod{dAxis}.moveToDest();
+                end
+            end
+            
+        end
+        
+        function isAtState = areScanAxisDevicesAtState(this, stState)
+            
+            dAxes = stState.axes;
+            
+            for k = 1:length(dIdx)
+                dAxis = dAxes(k);
+                switch dAxis
+                    case {1, 2, 3, 4, 5, 6} % Hexapod
+                        if ~this.apiHexapod.isReady()
+                            isAtState = false;
+                            return
+                        end
+                    case {7, 8} % Goni
+                        if ~this.apiGoni.isReady()
+                            isAtState = false;
+                            return
+                        end
+                    case {9, 10, 11, 12, 13} % Reticle
+                        retAxis = dAxis - 8;
+                        if ~this.uiDeviceArrayReticle{retAxis}.getDevice().isReady()
+                            isAtState = false;
+                            return
+                        end
+                end
+            end
+            
+            isAtState = true;
+        end
+        
+        function scanAcquire(this, stState, outputIdx)
+           
+            
+            % outputIdx: {'Image capture', 'Image intensity', 'Line Contrast', 'Line Pitch'}
+            switch outputIdx
+                case {1, 2, 3, 4} % Image caputre
+                     % flag that a "scan acquisition" has commenced:
+                    this.lIsScanAcquiring = true;
+            
+                    this.onAcquire();
+                    % This will call image caputre and then save
+            end
+        end
+        
+        function lVal = scanIsAcquired(this, stState, outputIdx)
+            % outputIdx: {'Image capture', 'Image intensity', 'Line Contrast', 'Line Pitch'}
+            switch outputIdx
+                case {1, 2, 3, 4} % Image caputre
+                    lVal = this.lIsScanAcquiring;
+            end
+            
+        end
+        
+        function onScanComplete(this)
+            this.lIsScanning = false;
+        end
+        
+        function onScanAbort(this)
+            this.lIsScanning = false;
+        end
+        
+        
 %% Build main figure
         function build(this)
             
@@ -941,13 +1101,9 @@ classdef LSI_Control < handle
             this.uiSLReticle.build(this.hpPositionRecall, 10, 10, 340, 188);
             
             
-            
             % Stage UI elements
-            
             dAxisPos = 30;
             dLeft = 20;
-            
-            
            
              % Build comms and axes
             this.uiCommSmarActSmarPod.build(this.hpStageControls, dLeft, dAxisPos - 7);
@@ -975,12 +1131,7 @@ classdef LSI_Control < handle
                     dLeft, dAxisPos);
                 dAxisPos = dAxisPos + this.dMultiAxisSeparation;
             end
-            
 
-            
-            
-            
-           % this.uibRotateCoordinates.build(this.hpStageControls, 600, 130, 100, 40);
             
             % Camera UI elements
             this.uiDeviceCameraTemperature.build(this.hpCameraControls, 10, 40);            
@@ -1070,8 +1221,6 @@ classdef LSI_Control < handle
                 case {'png', 'bmp', 'jpg'}
                     img = imread(path);
                     
-                     
-                     
                      
                 case 'spe'
                     
