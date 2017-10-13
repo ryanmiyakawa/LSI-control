@@ -8,6 +8,9 @@ classdef APIPVCam < mic.Base
         clock
         
         dExposureTime = -1 % this is not stored on device so we have to handle it here
+        dTemperature = 25 % also log this since we don't have access to it during an exposure
+        
+        lIsAcquiring = false
         
         fhOnImageReady % Function to call when image is finished
         fhWhileAcquiring = @(elapsedTime)[]% Function to call on trigger
@@ -55,13 +58,24 @@ classdef APIPVCam < mic.Base
             this.hDevice.setTmpSetpoint(dVal);
         end
         function dT = getTemperature(this)
-            dT = this.hDevice.getTmp();
+            if this.lIsAcquiring
+                % Read most recent value when we are acquiring since T is
+                % locked;
+                dT = this.dTemperature;
+            else
+                try
+                    dT = this.hDevice.getTmp();
+                catch
+                    fprintf('Camera temperature read failed!');
+                end
+                this.dTemperature = dT; % store most recent temperature
+            end
             
         end
         function setExposureTime(this, dVal)
             
             % Set exposure time via camera settings
-            lVal = this.hDevice.cameraSettings(false, dVal, 0, 0, 2047, 2047, 1, 1);
+            lVal = this.hDevice.cameraSettings(false, dVal, 1, 1, 2048, 2048, 1, 1);
             if ~lVal
                 msgbox('CAMERA EXP TIME/ROI SET FAILED');
             end
@@ -93,7 +107,7 @@ classdef APIPVCam < mic.Base
         % -------------
         
         function requestAcquisition(this)
-            
+            this.lIsAcquiring = true;
             if (this.dExposureTime <= 0)
                 msgbox('Need positive exposure time setting');
                 return
@@ -131,6 +145,7 @@ classdef APIPVCam < mic.Base
             else
                 lVal = true;
                 this.dCurrentImage = oData; % Set image here
+                this.lIsAcquiring = false;
             end
             
             
