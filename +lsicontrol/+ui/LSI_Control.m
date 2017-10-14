@@ -124,6 +124,21 @@ classdef LSI_Control < handle
         cHexapodAxisLabels = {'X', 'Y', 'Z', 'Rx', 'Ry', 'Rz'};
         cGoniLabels = {'Goni-Rx', 'Goni-Ry'};
         cReticleLabels = {'Ret-Coarse-X', 'Ret-Coarse-Y', 'Ret-Rx', 'Ret-Ry', 'Ret-Coarse-Z', 'Ret-Fine-X', 'Ret-Fine-Y'};
+        
+        ceScanAxisLabels = {'Hexapod X', ...
+                        'Hexapod Y', ...
+                        'Hexapod Z', ...
+                        'Hexapod Rx', ...
+                        'Hexapod Rx', ...
+                        'Hexapod Rz', ...
+                        'Goni X', ...
+                        'Goni Y', ...
+                        'Reticle X', ...
+                        'Reticle Y', ...
+                        'Reticle Z', ...
+                        'Reticle Rx', ...
+                        'Reticle Ry'};
+        ceScanOutputLables = {'Image capture', 'Image intensity', 'Line Contrast', 'Line Pitch', 'Pause 2s'};
     end
     
     properties (Access = private)
@@ -395,46 +410,54 @@ classdef LSI_Control < handle
             % Scans:
             this.ss1D = mic.ui.common.ScanSetup( ...
                             'cLabel', 'Saved pos', ...
+                            'ceOutputOptions', this.ceScanOutputLables, ...
+                            'ceScanAxisLabels', this.ceScanAxisLabels, ...
                             'dScanAxes', 1, ...
                             'cName', '1D-Scan', ...
                             'u8selectedDefaults', uint8(1),...
                             'cConfigPath', fullfile(this.cAppPath, '+config'), ...
                             'fhOnScanButtonPress', ...
-                                    @(ceScanAxisNames, ceScanStates, cOutputDevice)...
-                                            this.onScan(ceScanAxisNames, ceScanStates, cOutputDevice) ...
+                                    @(ceScanStates, u8ScanAxisIdx, u8ScanOutputDeviceIdx)...
+                                            this.onScan(ceScanStates, u8ScanAxisIdx, u8ScanOutputDeviceIdx) ...
                         );
                     
             this.ss2D = mic.ui.common.ScanSetup( ...
                             'cLabel', 'Saved pos', ...
+                            'ceOutputOptions', this.ceScanOutputLables, ...
+                            'ceScanAxisLabels', this.ceScanAxisLabels, ...
                             'dScanAxes', 2, ...
                             'cName', '2D-Scan', ...
                             'u8selectedDefaults', uint8([1, 2]),...
                             'cConfigPath', fullfile(this.cAppPath, '+config'), ...
                             'fhOnScanButtonPress', ...
-                                    @(ceScanAxisNames, ceScanStates, cOutputDevice)...
-                                            this.onScan(ceScanAxisNames, ceScanStates, cOutputDevice) ...
+                                    @(ceScanStates, u8ScanAxisIdx, u8ScanOutputDeviceIdx)...
+                                            this.onScan(ceScanStates, u8ScanAxisIdx, u8ScanOutputDeviceIdx) ...
                         );
                     
             this.ss3D = mic.ui.common.ScanSetup( ...
                             'cLabel', 'Saved pos', ...
+                            'ceOutputOptions', this.ceScanOutputLables, ...
+                            'ceScanAxisLabels', this.ceScanAxisLabels, ...
                             'dScanAxes', 3, ...
                             'cName', '3D-Scan', ...
                             'u8selectedDefaults', uint8([1, 2, 3]),...
                             'cConfigPath', fullfile(this.cAppPath, '+config'), ...
                             'fhOnScanButtonPress', ...
-                                    @(ceScanAxisNames, ceScanStates, cOutputDevice)...
-                                            this.onScan(ceScanAxisNames, ceScanStates, cOutputDevice) ...
+                                    @(ceScanStates, u8ScanAxisIdx, u8ScanOutputDeviceIdx)...
+                                            this.onScan(ceScanStates, u8ScanAxisIdx, u8ScanOutputDeviceIdx) ...
                         );
                     
             this.ssExp = mic.ui.common.ScanSetup( ...
                             'cLabel', 'Saved pos', ...
+                            'ceOutputOptions', this.ceScanOutputLables, ...
+                            'ceScanAxisLabels', this.ceScanAxisLabels, ...
                             'dScanAxes', 2, ...
                             'cName', 'Exp-Scan', ...
                             'u8selectedDefaults', uint8([11, 9]),...
                             'cConfigPath',fullfile(this.cAppPath, '+config'), ...
                             'fhOnScanButtonPress', ...
-                                    @(ceScanAxisNames, ceScanStates, cOutputDevice)...
-                                            this.onScan(ceScanAxisNames, ceScanStates, cOutputDevice) ...
+                                   @(ceScanStates, u8ScanAxisIdx, u8ScanOutputDeviceIdx)...
+                                            this.onScan(ceScanStates, u8ScanAxisIdx, u8ScanOutputDeviceIdx) ...
                         );
             
             
@@ -730,7 +753,7 @@ classdef LSI_Control < handle
                 stLog.hexapodRy = 'off';
                 stLog.hexapodRz = 'off';
             else 
-                dHexapodPositions = this.getHexapodRaw(this);
+                dHexapodPositions = this.getHexapodRaw();
                 stLog.hexapodX = sprintf('%0.6f', dHexapodPositions(1));
                 stLog.hexapodY = sprintf('%0.6f', dHexapodPositions(2));
                 stLog.hexapodZ = sprintf('%0.6f', dHexapodPositions(3));
@@ -915,7 +938,39 @@ classdef LSI_Control < handle
 
 % State array needs to be structure with property values
 
-        function onScan(this, stateList, u8OutputIdx)
+        function onScan(this, stateList, u8ScanAxisIdx, u8OutputIdx)
+            
+            
+            % validate start conditions
+            for k = 1:length(u8ScanAxisIdx)
+                switch double(u8ScanAxisIdx(k))
+                    case {1, 2, 3, 4, 5, 6} % Hexapod
+                        if isempty(this.apiHexapod)
+                            msgbox('Hexapod is not connected')
+                            return
+                        end
+                    case {7, 8} % Goni
+                        if isempty(this.apiGoni)
+                            msgbox('Goni is not connected')
+                            return
+                        end
+                    case {9, 10, 11, 12, 13} % Reticle
+                        if isempty(this.apiReticle)
+                            msgbox('Reticle is not connected')
+                            return
+                        end
+                end
+            end
+            
+            % validate output conditions
+            switch u8OutputIdx
+                case {1, 2, 3, 4} % Hexapod
+                   if isempty(this.apiCamera)
+                       msgbox('No Camera available for image acquisition')
+                       return
+                   end
+            end
+            
             
             % Build "scan recipe" from scan states 
             stRecipe.values = stateList; % enumerable list of states that can be read by setState
@@ -927,7 +982,7 @@ classdef LSI_Control < handle
             fhIsAcquired =  @(stUnit, stState) this.scanIsAcquired(stState, u8OutputIdx);
             fhOnComplete =  @(stUnit, stState) this.onScanComplete();
             fhOnAbort =  @(stUnit, stState) this.onScanAbort();
-            
+            dDelay = 0.2;
             % Create a new scan:
             this.scanHandler = mic.Scan(this.clock, ...
                                         stRecipe, ...
@@ -936,7 +991,8 @@ classdef LSI_Control < handle
                                         fhAcquire, ...
                                         fhIsAcquired, ...
                                         fhOnComplete, ...
-                                        fhOnAbort ...
+                                        fhOnAbort, ...
+                                        dDelay...
                                         );
             
             % Start scanning
@@ -949,20 +1005,57 @@ classdef LSI_Control < handle
             dAxes = stState.axes;
             dVals = stState.values;
             
-            for k = 1:length(dIdx)
+            % For coupled-axis stages, we need to defer movement till at
+            % the end to avoid multiple commands to same stage when
+            % stage is not ready yet
+            
+            % find out if hexapod is moving
+            lDeferredHexapodMove = false;
+            lDeferredGoniMove = false;
+            for k = 1:length(dAxes)
+                switch dAxes(k)
+                    case {1, 2, 3, 4, 5, 6} % Hexapod
+                        lDeferredHexapodMove = true;
+                    case {7, 8} % Goni
+                        lDeferredGoniMove = true;
+                end
+            end
+            
+            if lDeferredHexapodMove
+                dPosHexRaw = zeros(6,1);
+                for k = 1:6
+                    dPosHexRaw(k) = this.uiDeviceArrayHexapod{k}.getValRaw();  %#ok<AGROW>
+                end
+            end
+            if lDeferredGoniMove
+                dPosGoniRaw = zeros(2,1);
+                for k = 1:2
+                    dPosGoniRaw(k) = this.uiDeviceArrayGoni{k}.getValRaw(); %#ok<AGROW>
+                end
+            end
+            
+            
+            for k = 1:length(dAxes)
                 dVal = dVals(k);
                 dAxis = dAxes(k);
                 switch dAxis
                     case {1, 2, 3, 4, 5, 6} % Hexapod
                         this.uiDeviceArrayHexapod{dAxis}.setDestCal(dVal);
-                        this.uiDeviceArrayHexapod{dAxis}.moveToDest();
+                        dPosHexRaw(dAxis) = this.uiDeviceArrayHexapod{dAxis}.getDestRaw();
                     case {7, 8} % Goni
                         this.uiDeviceArrayGoni{dAxis - 6}.setDestCal(dVal);
-                        this.uiDeviceArrayHexapod{dAxis}.moveToDest();
+                        dPosHexRaw(dAxis - 6) = this.uiDeviceArrayHexapod{dAxis - 6}.getDestRaw();
                     case {9, 10, 11, 12, 13} % Reticle
                         this.uiDeviceArrayReticle{dAxis - 8}.setDestCal(dVal);
                         this.uiDeviceArrayHexapod{dAxis}.moveToDest();
                 end
+            end
+            
+            if lDeferredHexapodMove
+                this.uiDeviceArrayHexapod{1}.getDevice().moveAllAxesRaw(dPosHexRaw);
+            end
+            if lDeferredGoniMove
+                this.uiDeviceArrayGoni{1}.getDevice().moveAllAxesRaw(dPosGoniRaw);
             end
             
         end
@@ -971,7 +1064,7 @@ classdef LSI_Control < handle
             
             dAxes = stState.axes;
             
-            for k = 1:length(dIdx)
+            for k = 1:length(dAxes)
                 dAxis = dAxes(k);
                 switch dAxis
                     case {1, 2, 3, 4, 5, 6} % Hexapod
@@ -999,7 +1092,7 @@ classdef LSI_Control < handle
         function scanAcquire(this, stState, outputIdx)
            
             
-            % outputIdx: {'Image capture', 'Image intensity', 'Line Contrast', 'Line Pitch'}
+            % outputIdx: {'Image capture', 'Image intensity', 'Line Contrast', 'Line Pitch', 'Pause 2s'}
             switch outputIdx
                 case {1, 2, 3, 4} % Image caputre
                      % flag that a "scan acquisition" has commenced:
@@ -1007,6 +1100,12 @@ classdef LSI_Control < handle
             
                     this.onAcquire();
                     % This will call image caputre and then save
+                    
+                case 5 % pause
+                    pause(2);
+                    this.lIsScanAcquiring = false;
+                    
+                    
             end
         end
         
@@ -1014,7 +1113,9 @@ classdef LSI_Control < handle
             % outputIdx: {'Image capture', 'Image intensity', 'Line Contrast', 'Line Pitch'}
             switch outputIdx
                 case {1, 2, 3, 4} % Image caputre
-                    lVal = this.lIsScanAcquiring;
+                    lVal = ~this.lIsScanAcquiring;
+                case 5 % pause
+                    lVal = ~this.lIsScanAcquiring;
             end
             
         end

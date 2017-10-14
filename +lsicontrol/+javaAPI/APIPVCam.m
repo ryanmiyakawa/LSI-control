@@ -17,6 +17,8 @@ classdef APIPVCam < mic.Base
         
         lIsImageReady
         
+        nPixelsX = 1340
+        nPixelsY = 1300
         
         dCurrentImage = []
         
@@ -46,7 +48,7 @@ classdef APIPVCam < mic.Base
             
             % Init exposure time, which calls cameraSettings, which needs
             % to be set before an acquisition can happen:
-            this.setExposureTime(0.1);
+            this.setExposureTime(1);
         end
         
         function initDefaultClock(this)
@@ -65,17 +67,23 @@ classdef APIPVCam < mic.Base
             else
                 try
                     dT = this.hDevice.getTmp();
+                    this.dTemperature = dT; % store most recent temperature
                 catch
                     fprintf('Camera temperature read failed!');
+                    dT = -1000;
                 end
-                this.dTemperature = dT; % store most recent temperature
+                
             end
             
+            if dT < -70 && dT > -1000 % overheated
+                dT = 9999;
+            end
         end
-        function setExposureTime(this, dVal)
+        
+        function lVal = setExposureTime(this, dVal)
             
             % Set exposure time via camera settings
-            lVal = this.hDevice.cameraSettings(false, dVal, 1, 1, 2048, 2048, 1, 1);
+            lVal = this.hDevice.cameraSettings(false, uint64(dVal*1000), 0, 1339, 0, 1299, 1, 1);
             if ~lVal
                 msgbox('CAMERA EXP TIME/ROI SET FAILED');
             end
@@ -107,6 +115,9 @@ classdef APIPVCam < mic.Base
         % -------------
         
         function requestAcquisition(this)
+            % Verify that camera settings have been set on each acquire:
+            this.setExposureTime(this.dExposureTime);
+            
             this.lIsAcquiring = true;
             if (this.dExposureTime <= 0)
                 msgbox('Need positive exposure time setting');
@@ -138,25 +149,20 @@ classdef APIPVCam < mic.Base
         
         % return true if acquisition is finished
         function lVal = checkImageStatus(this)
-            oData = this.hDevice.getImage();
-            
-            if isempty(oData)
-                lVal = false;
-            else
-                lVal = true;
-                this.dCurrentImage = oData; % Set image here
-                this.lIsAcquiring = false;
-            end
-            
+            lVal = this.hDevice.checkStatus();
             
             % Compute elapsed time
             this.fhWhileAcquiring(toc(this.dTStart));
-            
         end
         
         function acquisitionHandler(this)
             fprintf('APICamera:Acquisition came back\n');
+            
+            dImg = typecast((this.hDevice.getImage()), 'uint16');
+            
+            this.dCurrentImage = reshape(dImg, 1340, 1300);
             this.lIsImageReady = true;
+            this.lIsAcquiring = false;
             this.fhOnImageReady(this.dCurrentImage);
         end
 

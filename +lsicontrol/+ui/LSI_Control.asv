@@ -5,10 +5,16 @@ classdef LSI_Control < handle
         cAppPath = fileparts(mfilename('fullpath'))
         cJavaLibPath = 'C:\Users\cxrodev\Documents\MATLAB\metdev\LSI-control';
         cJavaLibName = 'Met5Instruments.jar';
+        cDataPath
         cConfigPath
         clock = {}
         vendorDevice
         
+        % Colors:
+        dAcquireColor = [.97, 1, .9]
+        dFocusColor = [.93, .9, 1]
+        dDisableColor = [.9, .8, .8]
+        dInactiveColor = [.9, .9, .9]
         
         % Comm handles:
          % {mic.ui.device.GetSetLogical 1x1}
@@ -16,7 +22,7 @@ classdef LSI_Control < handle
         uiCommDeltaTauPowerPmac
         uiCommSmarActMcsGoni
         uiCommSmarActSmarPod
-        
+        uiCommPIMTECamera
         
         % Instruments handle
         hInstruments
@@ -39,16 +45,25 @@ classdef LSI_Control < handle
         apiHexapod
         apiGoni
         apiReticle
-        cameraAPI
+        apiCamera
+        
+        % Scans:
+        uitgScan
+        ceTabList = {'1D-scan', '2D-scan', '3D-scan', 'LSI P/S image acquisition'}
         
         % Camera
         uiDeviceCameraTemperature
         uiDeviceCameraExposureTime
-        uiDeviceCameraExposureMode
+        
         uiButtonAcquire
         uiButtonFocus
         uiButtonSaveImage
         
+        uipbExposureProgress
+        
+        uieImageName
+        
+        % Configuration
         uicHexapodConfigs
         uicGoniConfigs
         uicReticleConfigs
@@ -78,8 +93,26 @@ classdef LSI_Control < handle
         
         uiFileWatcher
               
+        % axes:
+        uitgAxes
         hsaAxes
+        aScanMonitors
+        
+        % Scan setups
+        scanHandler
+        ss1D
+        ss2D
+        ss3D
+        ssExp
+        
+        lAutoSaveImage
+        lIsScanAcquiring = false % whether we're currently in a "scan acquire"
+        lIsScanning = false
+        
+        
         hFigure
+        
+        
     end
     
     properties (Constant)
@@ -91,10 +124,30 @@ classdef LSI_Control < handle
         cHexapodAxisLabels = {'X', 'Y', 'Z', 'Rx', 'Ry', 'Rz'};
         cGoniLabels = {'Goni-Rx', 'Goni-Ry'};
         cReticleLabels = {'Ret-Coarse-X', 'Ret-Coarse-Y', 'Ret-Rx', 'Ret-Ry', 'Ret-Coarse-Z', 'Ret-Fine-X', 'Ret-Fine-Y'};
+        
+        ceScanAxisLabels = {'Hexapod X', ...
+                        'Hexapod Y', ...
+                        'Hexapod Z', ...
+                        'Hexapod Rx', ...
+                        'Hexapod Rx', ...
+                        'Hexapod Rz', ...
+                        'Goni X', ...
+                        'Goni Y', ...
+                        'Reticle X', ...
+                        'Reticle Y', ...
+                        'Reticle Z', ...
+                        'Reticle Rx', ...
+                        'Reticle Ry'};
+        ceScanOutputLables = {'Image capture', 'Image intensity', 'Line Contrast', 'Line Pitch', 'Pause 2s'};
     end
     
     properties (Access = private)
         cDirSave
+    end
+    
+    events
+        eImageAcquired
+        eImageSaved
     end
     
     methods
@@ -118,6 +171,29 @@ classdef LSI_Control < handle
 %             this.build();
             
             %this.loadStateFromDisk();
+            
+            this.initDataPath();
+           
+            
+            
+        end
+        
+        function initDataPath(this)
+             % Make data 
+            [cDirThis, cName, cExt] = fileparts(mfilename('fullpath'));
+            this.cDataPath = fullfile(cDirThis, '..', '..', '..', 'Data');
+            
+            sFils = dir(fullfile(cDirThis, '..', '..', '..'));
+            lDataFolderExist = false;
+            for k = 1:length(sFils)
+                if strcmp(sFils(k).name, 'Data')
+                    lDataFolderExist = true;
+                end
+            end
+            if ~lDataFolderExist
+                mkdir(this.cDataPath);
+            end
+                
             
         end
         
@@ -159,7 +235,16 @@ classdef LSI_Control < handle
                 'cLabel', 'SmarPod' ...
                 );
         
-  
+            this.uiCommPIMTECamera = mic.ui.device.GetSetLogical(...
+                'clock', this.clock, ...
+                'ceVararginCommandToggle', ceVararginCommandToggle, ...
+                'dWidthName', 130, ...
+                'lShowLabels', false, ...
+                'lShowDevice', false, ...
+                'lShowInitButton', false, ...
+                'cName', 'pimteCamera', ...
+                'cLabel', 'PI-MTE Camera' ...
+                );
             
             
         end
@@ -201,6 +286,7 @@ classdef LSI_Control < handle
         end
         
         function initUi(this)
+            
             
             % Init scalable axes:
             this.hsaAxes = mic.ui.axes.ScalableAxes();
@@ -265,21 +351,27 @@ classdef LSI_Control < handle
             );
         
         
-        
-        
             this.uiButtonAcquire = mic.ui.common.Button(...
-                'cText', 'Acquire' ...
+                'cText', 'Acquire', ...
+                'fhDirectCallback', @this.onAcquire ...
             );
+            
             this.uiButtonFocus = mic.ui.common.Button(...
-                'cText', 'Focus' ...
+                'cText', 'Focus', ...
+                'fhDirectCallback', @this.onFocus ...
             );
+             
+            
             this.uiButtonSaveImage = mic.ui.common.Button(...
-                'cText', 'Save image' ...
+                'cText', 'Save image', ...
+                'fhDirectCallback', @this.onSaveImage ...
             );
         
-            this.uibRotateCoordinates = mic.ui.common.Button(...
-                'cText', 'Rotate coordinates', 'fhDirectCallback', @this.launchRotationUI ...
+            this.uieImageName = mic.ui.common.Edit(...
+                'cLabel', 'Image name' ...
             );
+        
+
             
             this.uibHomeHexapod = mic.ui.common.Button(...
                 'cText', 'Home Hexapod' , 'fhDirectCallback', @(src,evt)this.homeHexapod ...
@@ -305,9 +397,434 @@ classdef LSI_Control < handle
                 'hGetCallback', @this.getReticleRaw, ...
                 'hSetCallback', @this.setReticleRaw);
         
+            this.uipbExposureProgress = mic.ui.common.ProgressBar(...
+                'dColorFill', [.4, .4, .8], ...
+                'dColorBg', [1, 1, 1], ...
+                'dHeight', 15, ...
+                'dWidth', 455);
+            
+            
+            % Scan tab group:
+            this.uitgScan = mic.ui.common.Tabgroup('ceTabNames', this.ceTabList);
+            
+            % Scans:
+            this.ss1D = mic.ui.common.ScanSetup( ...
+                            'cLabel', 'Saved pos', ...
+                            'ceOutputOptions', this.ceScanOutputLables, ...
+                            'ceScanAxisLabels', this.ceScanAxisLabels, ...
+                            'dScanAxes', 1, ...
+                            'cName', '1D-Scan', ...
+                            'u8selectedDefaults', uint8(1),...
+                            'cConfigPath', fullfile(this.cAppPath, '+config'), ...
+                            'fhOnScanButtonPress', ...
+                                    @(ceScanStates, u8ScanAxisIdx, u8ScanOutputDeviceIdx)...
+                                            this.onScan(ceScanStates, u8ScanAxisIdx, u8ScanOutputDeviceIdx) ...
+                        );
+                    
+            this.ss2D = mic.ui.common.ScanSetup( ...
+                            'cLabel', 'Saved pos', ...
+                            'ceOutputOptions', this.ceScanOutputLables, ...
+                            'ceScanAxisLabels', this.ceScanAxisLabels, ...
+                            'dScanAxes', 2, ...
+                            'cName', '2D-Scan', ...
+                            'u8selectedDefaults', uint8([1, 2]),...
+                            'cConfigPath', fullfile(this.cAppPath, '+config'), ...
+                            'fhOnScanButtonPress', ...
+                                    @(ceScanStates, u8ScanAxisIdx, u8ScanOutputDeviceIdx)...
+                                            this.onScan(ceScanStates, u8ScanAxisIdx, u8ScanOutputDeviceIdx) ...
+                        );
+                    
+            this.ss3D = mic.ui.common.ScanSetup( ...
+                            'cLabel', 'Saved pos', ...
+                            'ceOutputOptions', this.ceScanOutputLables, ...
+                            'ceScanAxisLabels', this.ceScanAxisLabels, ...
+                            'dScanAxes', 3, ...
+                            'cName', '3D-Scan', ...
+                            'u8selectedDefaults', uint8([1, 2, 3]),...
+                            'cConfigPath', fullfile(this.cAppPath, '+config'), ...
+                            'fhOnScanButtonPress', ...
+                                    @(ceScanStates, u8ScanAxisIdx, u8ScanOutputDeviceIdx)...
+                                            this.onScan(ceScanStates, u8ScanAxisIdx, u8ScanOutputDeviceIdx) ...
+                        );
+                    
+            this.ssExp = mic.ui.common.ScanSetup( ...
+                            'cLabel', 'Saved pos', ...
+                            'ceOutputOptions', this.ceScanOutputLables, ...
+                            'ceScanAxisLabels', this.ceScanAxisLabels, ...
+                            'dScanAxes', 2, ...
+                            'cName', 'Exp-Scan', ...
+                            'u8selectedDefaults', uint8([11, 9]),...
+                            'cConfigPath',fullfile(this.cAppPath, '+config'), ...
+                            'fhOnScanButtonPress', ...
+                                   @(ceScanStates, u8ScanAxisIdx, u8ScanOutputDeviceIdx)...
+                                            this.onScan(ceScanStates, u8ScanAxisIdx, u8ScanOutputDeviceIdx) ...
+                        );
+            
+            
+            % Axes tab group:
+            this.uitgAxes = mic.ui.common.Tabgroup('ceTabNames', {'Camera', 'Scan monitor'});
+        end
+        
+
+%% Initializing devices
+
+        function setCameraDeviceAndEnable(this, device)
+            this.apiCamera = lsicontrol.javaAPI.APIPVCam( ...
+                'hDevice', device, ...
+                'fhWhileAcquiring', @(elapsedTime)this.whileAcquiring(elapsedTime), ...
+                'fhOnImageReady', @(data)this.onCameraImageReady(data) ...
+                );
+            
+            % connect to camera
+            this.apiCamera.connect();
+            
+            % Link UI to devices, let's try to inline them:
+            this.uiDeviceCameraTemperature.setDevice(...
+                 lsicontrol.device.InlineGetSetDevice(...
+                    'get', @()this.apiCamera.getTemperature(), ...
+                    'set', @(dVal)this.apiCamera.setTemperature(dVal) ...
+                 )...
+            );
+            this.uiDeviceCameraTemperature.turnOn();
+            this.uiDeviceCameraTemperature.syncDestination()
+            
+            this.uiDeviceCameraExposureTime.setDevice(...
+                 lsicontrol.device.InlineGetSetDevice(...
+                    'get', @()this.apiCamera.getExposureTime(), ...
+                    'set', @(dVal)this.apiCamera.setExposureTime(dVal) ...
+                 )...
+            );
+            this.uiDeviceCameraExposureTime.turnOn();
+            this.uiDeviceCameraExposureTime.syncDestination();
+        
+        end
+        
+        % Resets api, bridges, and disconnects hardware device.
+        function disconnectCamera(this)
+            this.uiDeviceCameraTemperature.turnOff();
+            this.uiDeviceCameraTemperature.setDevice([]);
+            
+            this.uiDeviceCameraExposureTime.turnOff();
+            this.uiDeviceCameraExposureTime.setDevice([]);
+            
+            % Disconnect the camera:
+            this.apiCamera.disconnect();
+            
+            % Delete the Stage API
+            this.apiCamera = [];
+        end
+
+        % Builds hexapod java api, connecting getSetNumber UI elements
+        % to the appropriate API hooks.  Device is already connected
+        function setHexapodDeviceAndEnable(this, device)
+            
+            % Instantiate javaStageAPIs for communicating with devices
+            this.apiHexapod 	= lsicontrol.javaAPI.CXROJavaStageAPI(...
+                                  'jStage', device);
+           
+            % Check if we need to index stage:
+            if (~this.apiHexapod.isInitialized())
+                if strcmp(questdlg('Hexapod is not referenced. Index now?'), 'Yes')
+                    this.apiHexapod.home();
+                     % Wait till hexapod has finished move:
+                    dafHexapodHome = mic.DeferredActionScheduler(...
+                        'clock', this.clock, ...
+                        'fhAction', @()this.setHexapodDeviceAndEnable(device),...
+                        'fhTrigger', @()this.apiHexapod.isInitialized(),...
+                        'cName', 'DASHexapodIndexing', ...
+                        'dDelay', 0.5, ...
+                        'dExpiration', 10, ...
+                        'lShowExpirationMessage', true);
+                    dafHexapodHome.dispatch();
+                
+                end
+                return % Return in either case, only proceed if initialized
+            end
+            
+            % Use coupled-axis bridge to create single axis control
+            dHexapodR = [[1 0 0 ; 0 1 0; 0 0 1], zeros(3); zeros(3), [1 0 0 ; 0 1 0; 0 0 1]];  
+            for k = 1:6
+                this.oHexapodBridges{k} = lsicontrol.device.CoupledAxisBridge(this.apiHexapod, k, 6);
+                this.oHexapodBridges{k}.setR(dHexapodR);
+                this.uiDeviceArrayHexapod{k}.setDevice(this.oHexapodBridges{k});
+                this.uiDeviceArrayHexapod{k}.turnOn();
+                this.uiDeviceArrayHexapod{k}.syncDestination();
+            end
+        end
+        
+        % Resets api, bridges, and disconnects hardware device.
+        function disconnectHexapod(this)
+            for k = 1:6
+                this.oHexapodBridges{k} = [];
+                this.uiDeviceArrayHexapod{k}.turnOff();
+                this.uiDeviceArrayHexapod{k}.setDevice([]);
+            end
+            
+            % Disconnect the stage:
+            this.apiHexapod.disconnect();
+            
+            % Delete the Stage API
+            this.apiHexapod = [];
+        end
+        
+         % Builds goni java api, connecting getSetNumber UI elements
+        % to the appropriate API hooks.  Device is already connected
+        function setGoniDeviceAndEnable(this, device)
+            
+            % Instantiate javaStageAPIs for communicating with devices
+            this.apiGoni        = lsicontrol.javaAPI.CXROJavaStageAPI(...
+                                  'jStage', device);
+            % Check if we need to index stage:
+            if (~this.apiGoni.isInitialized())
+                if strcmp(questdlg('Goniometer is not referenced. Index now?'), 'Yes')
+                    this.apiGoni.home();
+                else
+                    return
+                end
+            end
+            
+            % Use coupled-axis bridge to create single axis control
+            for k = 1:2
+                this.oGoniBridges{k} = lsicontrol.device.CoupledAxisBridge(this.apiGoni, k, 2);
+                this.uiDeviceArrayGoni{k}.setDevice(this.oGoniBridges{k});
+                this.uiDeviceArrayGoni{k}.turnOn();
+                this.uiDeviceArrayGoni{k}.syncDestination();
+            end
+        end
+        
+        % Resets api, bridges, and disconnects hardware device.
+        function disconnectGoni(this)
+            for k = 1:2
+                this.oGoniBridges{k} = [];
+                this.uiDeviceArrayGoni{k}.turnOff();
+                this.uiDeviceArrayGoni{k}.setDevice([]);
+            end
+            
+            % Disconnect the stage:
+            this.apiGoni.disconnect();
+            
+            % Disconnect the API
+            this.apiGoni = [];
+        end
+        
+        % These don't work yet but we need to hook this in
+        function setReticleAxisDevice(this, device, index)
+            this.uiDeviceArrayReticle{index}.setDevice(device);
+            this.uiDeviceArrayReticle{index}.turnOn();
+            this.uiDeviceArrayReticle{index}.syncDestination();
         end
         
         
+        function disconnectReticleAxisDevice(this, index)
+            this.uiDeviceArrayReticle{index}.turnOff();
+            this.uiDeviceArrayReticle{index}.setDevice([]);
+        end
+        
+%% Functions for getting and setting stages directly for Position recaller and hooks for camera
+        
+        % Camera methods:
+        
+        % Callback for what to do when image is ready from camera
+        function onCameraImageReady(this, data)
+            this.hsaAxes.imagesc(data);
+            this.uiButtonAcquire.setText('Acquire');
+            this.uiButtonAcquire.setColor(this.dAcquireColor);
+            this.uiButtonFocus.setText('Focus');
+            this.uiButtonFocus.setColor(this.dFocusColor);
+            
+            this.uipbExposureProgress.set(1);
+            this.uipbExposureProgress.setColor([.2, .8, .2]);
+            
+            % update image name:
+            [path, nPNGs] = this.getDataSubdirectoryPath();
+            
+            cFileName = fullfile(path, sprintf('%0.3d.png', nPNGs + 1));
+            [~, name, ext] = fileparts(cFileName);
+            
+            this.uieImageName.set([name, ext]);
+            this.uiButtonSaveImage.setColor([.1, .9, .3]);
+            
+            % If we're currently during a scan acquisition, automatically
+            % call the save function.  This is a little sloppy, we can
+            % instead implement this as an events, although that also is
+            % not ideal.
+            if (this.lIsScanAcquiring)
+                this.onSaveImage();
+            end
+        end
+        
+        % Callback for what to do while acquisition is happening
+        function whileAcquiring(this, dElapsedTime)
+            dProgress = dElapsedTime/this.apiCamera.getExposureTime();
+            if dProgress > 1
+                dProgress = 1;
+            end
+            
+            this.uipbExposureProgress.set(dProgress);
+        end
+        
+        % Callback for the acquire button
+        function onAcquire(this)
+            if isempty(this.apiCamera)
+                msgbox('No camera connected!');
+                return
+            end
+            
+            this.uiButtonAcquire.setText('Acquiring...')
+            this.uiButtonAcquire.setColor(this.dDisableColor);
+            this.uiButtonFocus.setText('...')
+            this.uiButtonFocus.setColor(this.dInactiveColor);
+            
+            this.uipbExposureProgress.set(0);
+            this.uipbExposureProgress.setColor([.4, .4, .8]);
+            
+            this.apiCamera.requestAcquisition();
+        end
+        
+        % Callback for the focus button
+        function onFocus(this)
+            
+        end
+        
+        % Callback for the save button
+        function onSaveImage(this)
+            % Check if image is ready:
+            if ~this.apiCamera.lIsImageReady || isempty(this.apiCamera.dCurrentImage)
+                msgbox('No image available');
+                return
+            end
+            dImg = this.apiCamera.dCurrentImage;
+            
+            cFileName = this.uieImageName.get();
+            
+            path = this.getDataSubdirectoryPath();
+           
+            this.saveAndLogImage(path, cFileName, dImg);
+            imwrite(dImg, fullfile(path, cFileName), 'png');
+            
+            this.uipbExposureProgress.set(0);
+            this.uipbExposureProgress.setColor([.95, .95, .95]);
+            this.uiButtonSaveImage.setColor(this.dInactiveColor);
+            
+            
+            % If we're "scan acquiring", flag that we are now finished
+            if (this.lIsScanAcquiring)
+                this.lIsScanAcquiring = false;
+            end
+        end
+        
+        % get data subdirectory
+        function [path, nPNGs] = getDataSubdirectoryPath(this)
+            % Today's date:
+            cSubDirName = datestr(now, 29);
+            
+            sFils = dir(this.cDataPath);
+            lDataFolderExist = false;
+            for k = 1:length(sFils)
+                if strcmp(sFils(k).name, cSubDirName)
+                    lDataFolderExist = true;
+                end
+            end
+            path = fullfile(this.cDataPath, cSubDirName);
+            if ~lDataFolderExist
+                mkdir(path);
+            end
+            
+            nPNGs = length(dir(fullfile(path, '*.png')));
+        end
+        
+        % When an image is saved, make sure to log it
+        function saveAndLogImage(this, cSubDirPath, cFileName, dImg)
+            
+            % Make log structure:
+            stLog = struct();
+            
+            % Add timestamp
+            stLog.timeStamp = datestr(now, 31);
+            
+            stLog.fileName = cFileName;
+            
+            % Add Hexapod coordinates:
+            if isempty(this.apiHexapod)
+                stLog.hexapodX = 'off';
+                stLog.hexapodY = 'off';
+                stLog.hexapodZ = 'off';
+                stLog.hexapodRx = 'off';
+                stLog.hexapodRy = 'off';
+                stLog.hexapodRz = 'off';
+            else 
+                dHexapodPositions = this.getHexapodRaw(this);
+                stLog.hexapodX = sprintf('%0.6f', dHexapodPositions(1));
+                stLog.hexapodY = sprintf('%0.6f', dHexapodPositions(2));
+                stLog.hexapodZ = sprintf('%0.6f', dHexapodPositions(3));
+                stLog.hexapodRx = sprintf('%0.6f', dHexapodPositions(4));
+                stLog.hexapodRy = sprintf('%0.6f', dHexapodPositions(5));
+                stLog.hexapodRz = sprintf('%0.6f', dHexapodPositions(6));
+            end
+            
+            % Add Goni coordinates:
+            if isempty(this.apiGoni)
+                stLog.goniRx = 'off';
+                stLog.goniRy = 'off';
+            else 
+                dGoniPositions = this.getGoniRaw(this);
+                stLog.goniRx = sprintf('%0.6f', dGoniPositions(1));
+                stLog.goniRy = sprintf('%0.6f', dGoniPositions(2));
+            end
+            
+            % Add Reticle coordinates:
+            
+            % Add temperature and exposure times:
+            if isempty(this.apiCamera)
+                stLog.cameraTemp = 'off';
+                stLog.cameraExposureTime = 'off'; 
+            else
+                stLog.cameraTemp = sprintf('%0.1f', this.apiCamera.getTemperature());
+                stLog.cameraExposureTime = sprintf('%0.4f', this.apiCamera.getExposureTime()); 
+            end
+            
+            
+            % Create log file and headers if necessary
+            nl = java.lang.System.getProperty('line.separator').char;
+
+            ceFieldNames = fieldnames(stLog);
+            
+            sFils = dir(cSubDirPath);
+            lDataFileExist = false;
+            for k = 1:length(sFils)
+                if strcmp(sFils(k).name, 'log.csv')
+                    lDataFileExist = true;
+                end
+            end
+            logPath = fullfile(cSubDirPath, 'log.csv');
+            fid = fopen(logPath, 'a');
+            cWriteStr = '';
+            if ~lDataFileExist
+                for k = 1:length(ceFieldNames)
+                    cWriteStr = sprintf('%s%s,',cWriteStr, ceFieldNames{k});
+                end
+                cWriteStr(end) = [];
+                cWriteStr = [cWriteStr nl];
+            end
+            
+            % Write structure fields
+            for k = 1:length(ceFieldNames)
+                cWriteStr = sprintf('%s%s,',cWriteStr, stLog.(ceFieldNames{k}));
+            end
+            cWriteStr(end) = [];
+            cWriteStr = [cWriteStr nl];
+            fwrite(fid, cWriteStr);
+            fclose(fid);
+
+            % Save .mat file
+            [~, fl, ext] = fileparts(cFileName);
+            save(fullfile(cSubDirPath, [fl '.mat']), 'stLog', 'dImg');
+
+        end
+        
+        %%
+
+        % -------------------------*****************----------------------
         % Need to implement these methods:
         function positions = getReticleRaw(this)
             for k = 1:length(this.uiDeviceArrayReticle)
@@ -320,7 +837,7 @@ classdef LSI_Control < handle
                 this.uiDeviceArrayReticle{k}.setAxesPosition(); %#ok<AGROW>
             end
         end
-        
+        % -------------------------*****************----------------------
         
         function syncHexapodDestinations(this)
          % Sync edit boxes
@@ -416,111 +933,200 @@ classdef LSI_Control < handle
                  end
              end
         end
-        
-%         function launchRotationUI(this)
-%             rc = mic.ui.common.RotationCorrectionUI('callback', @(Rt, rx, ry)this.rotateCoordinateSystem(Rt, rx, ry));
-%         end
-%         
-%         function rotateCoordinateSystem(this, R, rx, ry)
-%            for k = 1:6
-%                this.oHexapodBridges{k}.setR(R);
-%            end
-%            disp('Rotating coordinate system for hexapod bridges:');
-%            disp(R);
-%         end
-        
-        
-        function setHexapodDeviceAndEnable(this, device)
             
-            % Instantiate javaStageAPIs for communicating with devices
-            this.apiHexapod 	= lsicontrol.javaAPI.CXROJavaStageAPI(...
-                                  'jStage', device);
-           
-            % Check if we need to index stage:
-            if (~this.apiHexapod.isInitialized())
-                if strcmp(questdlg('Hexapod is not referenced. Index now?'), 'Yes')
-                    this.apiHexapod.home();
-                     % Wait till hexapod has finished move:
-                    dafHexapodHome = mic.DeferredActionScheduler(...
-                        'clock', this.clock, ...
-                        'fhAction', @()this.setHexapodDeviceAndEnable(device),...
-                        'fhTrigger', @()this.apiHexapod.isInitialized(),...
-                        'cName', 'DASHexapodIndexing', ...
-                        'dDelay', 0.5, ...
-                        'dExpiration', 10, ...
-                        'lShowExpirationMessage', true);
-                    dafHexapodHome.dispatch();
+%% Set up scans:
+
+% State array needs to be structure with property values
+
+        function onScan(this, stateList, u8ScanAxisIdx, u8OutputIdx)
+            
+            
+            % validate start conditions
+            for k = 1:length(u8ScanAxisIdx)
+                switch double(u8ScanAxisIdx(k))
+                    case {1, 2, 3, 4, 5, 6} % Hexapod
+                        if isempty(this.apiHexapod)
+                            msgbox('Hexapod is not connected')
+                            return
+                        end
+                    case {7, 8} % Goni
+                        if isempty(this.apiGoni)
+                            msgbox('Goni is not connected')
+                            return
+                        end
+                    case {9, 10, 11, 12, 13} % Reticle
+                        if isempty(this.apiReticle)
+                            msgbox('Reticle is not connected')
+                            return
+                        end
+                end
+            end
+            
+            % validate output conditions
+            switch u8OutputIdx
+                case {1, 2, 3, 4} % Hexapod
+                   if isempty(this.apiCamera)
+                       msgbox('No Camera available for image acquisition')
+                       return
+                   end
+            end
+            
+            
+            % Build "scan recipe" from scan states 
+            stRecipe.values = stateList; % enumerable list of states that can be read by setState
+            stRecipe.unit = struct('unit', 'unit'); % not sure if we need units really, but let's fix later
+                        
+            fhSetState = @(stUnit, stState) this.setScanAxisDevicesToState(stState);
+            fhIsAtState = @(stUnit, stState) this.areScanAxisDevicesAtState(stState);
+            fhAcquire = @(stUnit, stState) this.scanAcquire(stState, u8OutputIdx);
+            fhIsAcquired =  @(stUnit, stState) this.scanIsAcquired(stState, u8OutputIdx);
+            fhOnComplete =  @(stUnit, stState) this.onScanComplete();
+            fhOnAbort =  @(stUnit, stState) this.onScanAbort();
+            
+            % Create a new scan:
+            this.scanHandler = mic.Scan(this.clock, ...
+                                        stRecipe, ...
+                                        fhSetState, ...
+                                        fhIsAtState, ...
+                                        fhAcquire, ...
+                                        fhIsAcquired, ...
+                                        fhOnComplete, ...
+                                        fhOnAbort ...
+                                        );
+            
+            % Start scanning
+            this.lIsScanning = true;
+            this.scanHandler.start();
+        end
+        
+        % Sets device to enumerated state
+        function setScanAxisDevicesToState(this, stState)
+            dAxes = stState.axes;
+            dVals = stState.values;
+            
+            % For coupled-axis stages, we need to defer movement till at
+            % the end to avoid multiple commands to same stage when
+            % stage is not ready yet
+            
+            % find out if hexapod is moving
+            lDeferredHexapodMove = false;
+            lDeferredGoniMove = false;
+            for k = 1:length(dAxes)
+                switch dAxes(k)
+                    case {1, 2, 3, 4, 5, 6} % Hexapod
+                        lDeferredHexapodMove = true;
+                    case {7, 8} % Goni
+                        lDeferredGoniMove = true;
+                end
+            end
+            
+            if lDeferredHexapodMove
+                for k = 1:6
+                    dPosHexRaw(k) = this.uiDeviceArrayHexapod.getValRaw(); %#ok<*NASGU>
+                end
+            end
+            if lDeferredGoniMove
+                 for k = 1:6
+                    dPosGoniRaw(k) = this.uiDeviceArrayGoni.getValRaw();
+                end
+            end
+            
+            
+            for k = 1:length(dAxes)
+                dVal = dVals(k);
+                dAxis = dAxes(k);
+                switch dAxis
+                    case {1, 2, 3, 4, 5, 6} % Hexapod
+                        
+                        this.uiDeviceArrayHexapod{dAxis}.setDestCal(dVal);
+                    case {7, 8} % Goni
+                        lDeferredGoniMove = true;
+                        this.uiDeviceArrayGoni{dAxis - 6}.setDestCal(dVal);
+                    case {9, 10, 11, 12, 13} % Reticle
+                        this.uiDeviceArrayReticle{dAxis - 8}.setDestCal(dVal);
+                        this.uiDeviceArrayHexapod{dAxis}.moveToDest();
+                end
+            end
+            
+            if lDeferredHexapodMove
                 
-                end
-                return % Return in either case, only proceed if initialized
+            end
+            if lDeferredGoniMove
+                
             end
             
-            % Use coupled-axis bridge to create single axis control
-            dHexapodR = [[-1 0 0 ; 0 0 1; 0 1 0], zeros(3); zeros(3), [-1 0 0 ; 0 0 1; 0 1 0]];  
-            for k = 1:6
-                this.oHexapodBridges{k} = lsicontrol.device.CoupledAxisBridge(this.apiHexapod, k, 6);
-                this.oHexapodBridges{k}.setR(dHexapodR);
-                this.uiDeviceArrayHexapod{k}.setDevice(this.oHexapodBridges{k});
-                this.uiDeviceArrayHexapod{k}.turnOn();
-                this.uiDeviceArrayHexapod{k}.syncDestination();
-            end
         end
         
-        function disconnectHexapod(this)
-            for k = 1:6
-                this.oHexapodBridges{k} = [];
-                this.uiDeviceArrayHexapod{k}.turnOff();
-                this.uiDeviceArrayHexapod{k}.setDevice([]);
-            end
+        function isAtState = areScanAxisDevicesAtState(this, stState)
             
-            % Disconnect the stage:
+            dAxes = stState.axes;
             
-            
-            this.apiHexapod = [];
-        end
-        
-        function setGoniDeviceAndEnable(this, device)
-            
-            % Instantiate javaStageAPIs for communicating with devices
-            this.apiGoni        = lsicontrol.javaAPI.CXROJavaStageAPI(...
-                                  'jStage', device);
-            % Check if we need to index stage:
-            if (~this.apiGoni.isInitialized())
-                if strcmp(questdlg('Goniometer is not referenced. Index now?'), 'Yes')
-                    this.apiGoni.home();
-                else
-                    return
+            for k = 1:length(dAxes)
+                dAxis = dAxes(k);
+                switch dAxis
+                    case {1, 2, 3, 4, 5, 6} % Hexapod
+                        if ~this.apiHexapod.isReady()
+                            isAtState = false;
+                            return
+                        end
+                    case {7, 8} % Goni
+                        if ~this.apiGoni.isReady()
+                            isAtState = false;
+                            return
+                        end
+                    case {9, 10, 11, 12, 13} % Reticle
+                        retAxis = dAxis - 8;
+                        if ~this.uiDeviceArrayReticle{retAxis}.getDevice().isReady()
+                            isAtState = false;
+                            return
+                        end
                 end
             end
             
-            % Use coupled-axis bridge to create single axis control
-            for k = 1:2
-                this.oGoniBridges{k} = lsicontrol.device.CoupledAxisBridge(this.apiGoni, k, 2);
-                this.uiDeviceArrayGoni{k}.setDevice(this.oGoniBridges{k});
-                this.uiDeviceArrayGoni{k}.turnOn();
-                this.uiDeviceArrayGoni{k}.syncDestination();
+            isAtState = true;
+        end
+        
+        function scanAcquire(this, stState, outputIdx)
+           
+            
+            % outputIdx: {'Image capture', 'Image intensity', 'Line Contrast', 'Line Pitch', 'Pause 2s'}
+            switch outputIdx
+                case {1, 2, 3, 4} % Image caputre
+                     % flag that a "scan acquisition" has commenced:
+                    this.lIsScanAcquiring = true;
+            
+                    this.onAcquire();
+                    % This will call image caputre and then save
+                    
+                case 5 % pause
+                    pause(2);
+                    this.lIsScanAcquiring = false;
+                    
+                    
             end
         end
         
-         function disconnectGoni(this)
-            for k = 1:2
-                this.oGoniBridges{k} = [];
-                this.uiDeviceArrayGoni{k}.turnOff();
-                this.uiDeviceArrayGoni{k}.setDevice([]);
+        function lVal = scanIsAcquired(this, stState, outputIdx)
+            % outputIdx: {'Image capture', 'Image intensity', 'Line Contrast', 'Line Pitch'}
+            switch outputIdx
+                case {1, 2, 3, 4} % Image caputre
+                    lVal = ~this.lIsScanAcquiring;
+                case 5 % pause
+                    lVal = ~this.lIsScanAcquiring;
             end
-            this.apiGoni = [];
+            
         end
         
-        function setReticleAxisDevice(this, device, index)
-            this.uiDeviceArrayReticle{index}.setDevice(device);
-            this.uiDeviceArrayReticle{index}.turnOn();
-            this.uiDeviceArrayReticle{index}.syncDestination();
-        end
-        function disconnectReticleAxisDevice(this, index)
-            this.uiDeviceArrayReticle{index}.turnOff();
-            this.uiDeviceArrayReticle{index}.setDevice([]);
+        function onScanComplete(this)
+            this.lIsScanning = false;
         end
         
+        function onScanAbort(this)
+            this.lIsScanning = false;
+        end
+        
+        
+%% Build main figure
         function build(this)
             
             % Main figure
@@ -534,8 +1140,12 @@ classdef LSI_Control < handle
                     'Menubar','none', ...
                     'Color', [0.7 0.73 0.73]);
                 
+           % Axes:
+           
+           
            % Main Axes:
-            this.hsaAxes.build(this.hFigure, 880, 165, 540, 540)
+           this.uitgAxes.build(this.hFigure, 880, 10, 540, 590);
+           this.hsaAxes.build(this.uitgAxes.getTabByName('Camera'), 10, 10, 520, 520);
                 
             % Stage panel:
             this.hpStageControls = uipanel(...
@@ -544,6 +1154,7 @@ classdef LSI_Control < handle
                 'Title', 'Stage control',...
                 'FontWeight', 'Bold',...
                 'Clipping', 'on',...
+                'BorderWidth',0, ... 
                 'Position', [10 250 490 600] ...
             );
         
@@ -554,6 +1165,7 @@ classdef LSI_Control < handle
                 'Title', 'Position recall and coordinate transform',...
                 'FontWeight', 'Bold',...
                 'Clipping', 'on',...
+                'BorderWidth',0, ... 
                 'Position', [510 250 360 600] ...
                 );
         
@@ -564,32 +1176,32 @@ classdef LSI_Control < handle
                 'Title', 'Camera control',...
                 'FontWeight', 'Bold',...
                 'Clipping', 'on',...
-                'Position', [880 730 540 120] ...
+                'BorderWidth',0, ... 
+                'Position', [880 610 540 240] ...
             );
-           
-%             % Main control panel:
-%             this.hpMainControls = uipanel(...
-%                 'Parent', this.hFigure,...
-%                 'Units', 'pixels',...
-%                 'Title', 'Main control',...
-%                 'FontWeight', 'Bold',...
-%                 'Clipping', 'on',...
-%                 'Position', [40 700 720 120] ...
-%                 );
+        
+            % Scan controls:
+            this.uitgScan.build(this.hFigure, 10, 10, 860, 230);
+
+             % Scans:
+            this.ss1D.build(this.uitgScan.getTabByIndex(1), 10, 10, 850, 180); 
+                    
+            this.ss2D.build(this.uitgScan.getTabByIndex(2), 10, 10, 850, 180);
+                    
+            this.ss3D.build(this.uitgScan.getTabByIndex(3), 10, 10, 850, 180);
+                    
+            this.ssExp.build(this.uitgScan.getTabByIndex(4), 10, 10, 850, 180);
+            
                 
             % Position recall:
-            this.uiSLHexapod.build(this.hpPositionRecall, 10, 410, 335, 190);
-            this.uiSLGoni.build(this.hpPositionRecall, 10, 210, 335, 190);
-            this.uiSLReticle.build(this.hpPositionRecall, 10, 10, 335, 190);
-            
+            this.uiSLHexapod.build(this.hpPositionRecall, 10, 390, 340, 188);
+            this.uiSLGoni.build(this.hpPositionRecall, 10, 200, 340, 188);
+            this.uiSLReticle.build(this.hpPositionRecall, 10, 10, 340, 188);
             
             
             % Stage UI elements
-            
             dAxisPos = 30;
             dLeft = 20;
-            
-            
            
              % Build comms and axes
             this.uiCommSmarActSmarPod.build(this.hpStageControls, dLeft, dAxisPos - 7);
@@ -617,31 +1229,31 @@ classdef LSI_Control < handle
                     dLeft, dAxisPos);
                 dAxisPos = dAxisPos + this.dMultiAxisSeparation;
             end
-            
 
-            
-            
-            
-           % this.uibRotateCoordinates.build(this.hpStageControls, 600, 130, 100, 40);
             
             % Camera UI elements
-            this.uiDeviceCameraTemperature.build(this.hpCameraControls, 10, 15);            
-            this.uiDeviceCameraExposureTime.build(this.hpCameraControls, 10, 45);
+            this.uiDeviceCameraTemperature.build(this.hpCameraControls, 10, 40);            
+            this.uiDeviceCameraExposureTime.build(this.hpCameraControls, 10, 70);
             
-%             this.uiFileWatcher.build(this.hpCameraControls, 20, 55);
-
-            this.uiButtonFocus.build(this.hpCameraControls, 20, 80, 100, 30);
-            this.uiButtonAcquire.build(this.hpCameraControls, 160, 80, 100, 30);
-            this.uiButtonSaveImage.build(this.hpCameraControls, 300, 80, 100, 30);
+            this.uiCommPIMTECamera.build    (this.hpCameraControls, 10,  15);
+            
+            this.uiButtonFocus.build        (this.hpCameraControls, 10,  110, 100, 30);
+            this.uiButtonAcquire.build      (this.hpCameraControls, 130, 110, 100, 30);
+            this.uiButtonSaveImage.build    (this.hpCameraControls, 330, 165, 100, 20);
+            
+            this.uieImageName.build         (this.hpCameraControls, 10, 150, 300, 25);
+            
+            
+            this.uipbExposureProgress.build(this.hpCameraControls, 10, 200);
       
             % Position recall elements
-           % this.uiButtonAdd
-%         
-%         
-%             this.uiDeviceMode.build(this.hFigure, 10, 130);
-%             this.uiDeviceAwesome.build(this.hFigure, 10, 170);
-%             this.uiToggleAll.build(this.hFigure, 10, 210, 120, 30);
-%             this.uiButtonUseDeviceData.build(this.hFigure, 10, 250, 120, 30);
+            
+            % Button colors:
+            this.uiButtonAcquire.setText('Acquire')
+            this.uiButtonAcquire.setColor(this.dAcquireColor);
+            this.uiButtonFocus.setText('Focus')
+            this.uiButtonFocus.setColor(this.dFocusColor);
+            
             
         end
         
@@ -707,8 +1319,6 @@ classdef LSI_Control < handle
                 case {'png', 'bmp', 'jpg'}
                     img = imread(path);
                     
-                     
-                     
                      
                 case 'spe'
                     

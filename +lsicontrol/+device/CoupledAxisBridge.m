@@ -17,6 +17,15 @@ classdef CoupledAxisBridge < mic.interface.device.GetSetNumber
             this.R = eye(totalAxes);
         end
         
+        % Breaks abstraction a little, but we sometimes need to move all
+        % axes simultaneously behind the rotation transformation
+        function moveAllAxesRaw(this, dPosAr)
+            % Set 6-vector in hexapod coordinates
+            this.stageAPI.setAxesPosition(...
+                        (this.R\dPosAr) ...
+                        );
+        end
+        
         function setR(this, R)
             this.R = R;
         end
