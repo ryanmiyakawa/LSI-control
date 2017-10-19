@@ -7,6 +7,7 @@ classdef APIPVCam < mic.Base
         hDevice
         clock
         
+        dAcquisitionDelay = 1.8; % delay associated with returning an image
         dExposureTime = -1 % this is not stored on device so we have to handle it here
         dTemperature = 25 % also log this since we don't have access to it during an exposure
         
@@ -23,6 +24,8 @@ classdef APIPVCam < mic.Base
         dCurrentImage = []
         
         lIsFocusing = false
+        
+        dasAcquisition % deferred actions scheduler for acquire
         
         dTStart = 0 % keeping track of exposure times
         
@@ -134,17 +137,105 @@ classdef APIPVCam < mic.Base
             
             this.dTStart = tic;
             
-            dasAcquisition = mic.DeferredActionScheduler(...
+            this.dasAcquisition = mic.DeferredActionScheduler(...
                 'clock', this.clock, ...
                 'fhAction', @()this.acquisitionHandler(),...
                 'fhTrigger', @()this.checkImageStatus(),... 
                 'cName', 'DASCameraAcquisition2', ...
-                'dDelay', 0.3, ...
+                'dDelay', 0.05, ...
                 'dExpiration', 100, ...
                 'lShowExpirationMessage', true);
-            dasAcquisition.dispatch();
+            this.dasAcquisition.dispatch();
+        end
+        
+        function abortAcquisition(this)
+            % Stop service that is waiting for an image
+            this.dasAcquisition.abort();
+            this.lIsAcquiring = false;
+            
+            % Tell camera to abort:
+            this.hDevice.stopCapture();
+        end
+        
+        function acquisitionHandler(this)
+            fprintf('APICamera:Acquisition came back\n');
+            
+            dImg = typecast((this.hDevice.getImage()), 'uint16');
+            
+            % Once image is captured, stop camera:
+            this.hDevice.stopCapture();
+            
+            this.dCurrentImage = reshape(dImg, 1340, 1300);
+            this.lIsImageReady = true;
+            this.lIsAcquiring = false;
+            this.fhOnImageReady(this.dCurrentImage);
+        end
+        
+        % Start focus mode
+        function startFocus(this)
+            this.lIsFocusing = true;
+            this.requestFocusAcquisition();
+        end
+        
+        function stopFocus(this)
+            this.lIsFocusing = false;
+            this.abortAcquisition();
+        end
+        
+        function requestFocusAcquisition(this)
+            % Verify that camera settings have been set on each acquire:
+            this.setExposureTime(this.dExposureTime);
+            
+            this.lIsAcquiring = true;
+            if (this.dExposureTime <= 0)
+                msgbox('Need positive exposure time setting');
+                return
+            end
+            
+            fprintf('APICamera:Requesting acquisition\n');
+            this.lIsImageReady = false;
+            
+            if ~this.hDevice.startCapture()
+                msgbox('CAMERA ACQUISITION FAILED TO START')
+                return;
+            end
+            
+            this.dTStart = tic;
+            
+            this.dasAcquisition = mic.DeferredActionScheduler(...
+                'clock', this.clock, ...
+                'fhAction', @()this.focusAcquisitionHandler(),...
+                'fhTrigger', @()this.checkImageStatus(),... 
+                'cName', 'DASCameraFocus', ...
+                'dDelay', 0.05, ...
+                'dExpiration', 100, ...
+                'lShowExpirationMessage', true);
+            this.dasAcquisition.dispatch();
+        end
+        
+        function focusAcquisitionHandler(this)
+            fprintf('APICamera:Focus acquisition came back\n');
+            
+            dImg = typecast((this.hDevice.getImage()), 'uint16');
+            
+            % Once image is captured, stop camera:
+            this.hDevice.stopCapture();
+            
+            this.dCurrentImage = reshape(dImg, 1340, 1300);
+            this.lIsImageReady = true;
+            this.lIsAcquiring = false;
+            this.fhOnImageReady(this.dCurrentImage);
+            
+            
+            
+            % if we're still focusing, call again:
+            if this.lIsFocusing
+                this.requestFocusAcquisition();
+            end
             
         end
+        
+       
         
         
         % return true if acquisition is finished
@@ -155,16 +246,7 @@ classdef APIPVCam < mic.Base
             this.fhWhileAcquiring(toc(this.dTStart));
         end
         
-        function acquisitionHandler(this)
-            fprintf('APICamera:Acquisition came back\n');
-            
-            dImg = typecast((this.hDevice.getImage()), 'uint16');
-            
-            this.dCurrentImage = reshape(dImg, 1340, 1300);
-            this.lIsImageReady = true;
-            this.lIsAcquiring = false;
-            this.fhOnImageReady(this.dCurrentImage);
-        end
+        
 
         % Accessors
         function lVal = isImageReady(this)

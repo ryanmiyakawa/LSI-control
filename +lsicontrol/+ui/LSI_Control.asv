@@ -653,9 +653,14 @@ classdef LSI_Control < handle
             end
         end
         
+        % Callback when image is aborting:
+        function abortCameraAcquisition(this)
+            
+        end
+        
         % Callback for what to do while acquisition is happening
         function whileAcquiring(this, dElapsedTime)
-            dProgress = dElapsedTime/this.apiCamera.getExposureTime();
+            dProgress = dElapsedTime/(this.apiCamera.getExposureTime();
             if dProgress > 1
                 dProgress = 1;
             end
@@ -670,15 +675,30 @@ classdef LSI_Control < handle
                 return
             end
             
-            this.uiButtonAcquire.setText('Acquiring...')
-            this.uiButtonAcquire.setColor(this.dDisableColor);
-            this.uiButtonFocus.setText('...')
-            this.uiButtonFocus.setColor(this.dInactiveColor);
+            % Call acquire, unless already acquiring, then call abort:
+            if ~this.apiCamera.lIsAcquiring
             
-            this.uipbExposureProgress.set(0);
-            this.uipbExposureProgress.setColor([.4, .4, .8]);
-            
-            this.apiCamera.requestAcquisition();
+                this.uiButtonAcquire.setText('STOP')
+                this.uiButtonAcquire.setColor(this.dDisableColor);
+                this.uiButtonFocus.setText('...')
+                this.uiButtonFocus.setColor(this.dInactiveColor);
+
+                this.uipbExposureProgress.set(0);
+                this.uipbExposureProgress.setColor([.4, .4, .8]);
+
+                this.apiCamera.requestAcquisition();
+            else % abort acquisition:
+                
+                this.apiCamera.abortAcquisition();
+                this.uiButtonAcquire.setText('Acquire');
+                this.uiButtonAcquire.setColor(this.dAcquireColor);
+                this.uiButtonFocus.setText('Focus');
+                this.uiButtonFocus.setColor(this.dFocusColor);
+
+                this.uipbExposureProgress.set(0);
+                
+               
+            end
         end
         
         % Callback for the focus button
@@ -753,7 +773,7 @@ classdef LSI_Control < handle
                 stLog.hexapodRy = 'off';
                 stLog.hexapodRz = 'off';
             else 
-                dHexapodPositions = this.getHexapodRaw(this);
+                dHexapodPositions = this.getHexapodRaw();
                 stLog.hexapodX = sprintf('%0.6f', dHexapodPositions(1));
                 stLog.hexapodY = sprintf('%0.6f', dHexapodPositions(2));
                 stLog.hexapodZ = sprintf('%0.6f', dHexapodPositions(3));
@@ -982,7 +1002,7 @@ classdef LSI_Control < handle
             fhIsAcquired =  @(stUnit, stState) this.scanIsAcquired(stState, u8OutputIdx);
             fhOnComplete =  @(stUnit, stState) this.onScanComplete();
             fhOnAbort =  @(stUnit, stState) this.onScanAbort();
-            
+            dDelay = 0.2;
             % Create a new scan:
             this.scanHandler = mic.Scan(this.clock, ...
                                         stRecipe, ...
@@ -991,7 +1011,8 @@ classdef LSI_Control < handle
                                         fhAcquire, ...
                                         fhIsAcquired, ...
                                         fhOnComplete, ...
-                                        fhOnAbort ...
+                                        fhOnAbort, ...
+                                        dDelay...
                                         );
             
             % Start scanning
@@ -1021,13 +1042,15 @@ classdef LSI_Control < handle
             end
             
             if lDeferredHexapodMove
+                dPosHexRaw = zeros(6,1);
                 for k = 1:6
-                    dPosHexRaw(k) = this.uiDeviceArrayHexapod.getValRaw(); %#ok<*NASGU>
+                    dPosHexRaw(k) = this.uiDeviceArrayHexapod{k}.getValRaw();  %#ok<AGROW>
                 end
             end
             if lDeferredGoniMove
-                 for k = 1:6
-                    dPosGoniRaw(k) = this.uiDeviceArrayGoni.getValRaw();
+                dPosGoniRaw = zeros(2,1);
+                for k = 1:2
+                    dPosGoniRaw(k) = this.uiDeviceArrayGoni{k}.getValRaw(); %#ok<AGROW>
                 end
             end
             
@@ -1037,11 +1060,11 @@ classdef LSI_Control < handle
                 dAxis = dAxes(k);
                 switch dAxis
                     case {1, 2, 3, 4, 5, 6} % Hexapod
-                        
                         this.uiDeviceArrayHexapod{dAxis}.setDestCal(dVal);
+                        dPosHexRaw(dAxis) = this.uiDeviceArrayHexapod{dAxis}.getDestRaw();
                     case {7, 8} % Goni
-                        lDeferredGoniMove = true;
                         this.uiDeviceArrayGoni{dAxis - 6}.setDestCal(dVal);
+                        dPosHexRaw(dAxis - 6) = this.uiDeviceArrayHexapod{dAxis - 6}.getDestRaw();
                     case {9, 10, 11, 12, 13} % Reticle
                         this.uiDeviceArrayReticle{dAxis - 8}.setDestCal(dVal);
                         this.uiDeviceArrayHexapod{dAxis}.moveToDest();
@@ -1049,10 +1072,10 @@ classdef LSI_Control < handle
             end
             
             if lDeferredHexapodMove
-                
+                this.uiDeviceArrayHexapod{1}.getDevice().moveAllAxesRaw(dPosHexRaw);
             end
             if lDeferredGoniMove
-                
+                this.uiDeviceArrayGoni{1}.getDevice().moveAllAxesRaw(dPosGoniRaw);
             end
             
         end

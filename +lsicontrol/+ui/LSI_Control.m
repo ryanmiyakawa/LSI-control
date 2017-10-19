@@ -416,7 +416,8 @@ classdef LSI_Control < handle
                             'cName', '1D-Scan', ...
                             'u8selectedDefaults', uint8(1),...
                             'cConfigPath', fullfile(this.cAppPath, '+config'), ...
-                            'fhOnScanButtonPress', ...
+                            'fhOnStopScan', @()this.stopScan, ...
+                            'fhOnScan', ...
                                     @(ceScanStates, u8ScanAxisIdx, u8ScanOutputDeviceIdx)...
                                             this.onScan(ceScanStates, u8ScanAxisIdx, u8ScanOutputDeviceIdx) ...
                         );
@@ -429,7 +430,8 @@ classdef LSI_Control < handle
                             'cName', '2D-Scan', ...
                             'u8selectedDefaults', uint8([1, 2]),...
                             'cConfigPath', fullfile(this.cAppPath, '+config'), ...
-                            'fhOnScanButtonPress', ...
+                            'fhOnStopScan', @()this.stopScan, ...
+                            'fhOnScan', ...
                                     @(ceScanStates, u8ScanAxisIdx, u8ScanOutputDeviceIdx)...
                                             this.onScan(ceScanStates, u8ScanAxisIdx, u8ScanOutputDeviceIdx) ...
                         );
@@ -442,7 +444,8 @@ classdef LSI_Control < handle
                             'cName', '3D-Scan', ...
                             'u8selectedDefaults', uint8([1, 2, 3]),...
                             'cConfigPath', fullfile(this.cAppPath, '+config'), ...
-                            'fhOnScanButtonPress', ...
+                            'fhOnStopScan', @()this.stopScan, ...
+                            'fhOnScan', ...
                                     @(ceScanStates, u8ScanAxisIdx, u8ScanOutputDeviceIdx)...
                                             this.onScan(ceScanStates, u8ScanAxisIdx, u8ScanOutputDeviceIdx) ...
                         );
@@ -455,7 +458,8 @@ classdef LSI_Control < handle
                             'cName', 'Exp-Scan', ...
                             'u8selectedDefaults', uint8([11, 9]),...
                             'cConfigPath',fullfile(this.cAppPath, '+config'), ...
-                            'fhOnScanButtonPress', ...
+                            'fhOnStopScan', @()this.stopScan, ...
+                            'fhOnScan', ...
                                    @(ceScanStates, u8ScanAxisIdx, u8ScanOutputDeviceIdx)...
                                             this.onScan(ceScanStates, u8ScanAxisIdx, u8ScanOutputDeviceIdx) ...
                         );
@@ -622,11 +626,18 @@ classdef LSI_Control < handle
         
 %% Functions for getting and setting stages directly for Position recaller and hooks for camera
         
-        % Camera methods:
-        
+
         % Callback for what to do when image is ready from camera
         function onCameraImageReady(this, data)
+            
             this.hsaAxes.imagesc(data);
+            
+            % If focusing, don't bother to reset buttons or save image:
+            if this.apiCamera.lIsFocusing
+                return
+            end
+            
+            
             this.uiButtonAcquire.setText('Acquire');
             this.uiButtonAcquire.setColor(this.dAcquireColor);
             this.uiButtonFocus.setText('Focus');
@@ -653,13 +664,13 @@ classdef LSI_Control < handle
             end
         end
         
+        
         % Callback for what to do while acquisition is happening
         function whileAcquiring(this, dElapsedTime)
-            dProgress = dElapsedTime/this.apiCamera.getExposureTime();
+            dProgress = dElapsedTime/(this.apiCamera.getExposureTime() + this.apiCamera.dAcquisitionDelay);
             if dProgress > 1
                 dProgress = 1;
             end
-            
             this.uipbExposureProgress.set(dProgress);
         end
         
@@ -670,20 +681,62 @@ classdef LSI_Control < handle
                 return
             end
             
-            this.uiButtonAcquire.setText('Acquiring...')
-            this.uiButtonAcquire.setColor(this.dDisableColor);
-            this.uiButtonFocus.setText('...')
-            this.uiButtonFocus.setColor(this.dInactiveColor);
+            % Call acquire, unless already acquiring, then call abort:
+            if ~this.apiCamera.lIsAcquiring
             
-            this.uipbExposureProgress.set(0);
-            this.uipbExposureProgress.setColor([.4, .4, .8]);
-            
-            this.apiCamera.requestAcquisition();
+                this.uiButtonAcquire.setText('STOP')
+                this.uiButtonAcquire.setColor(this.dDisableColor);
+                this.uiButtonFocus.setText('...')
+                this.uiButtonFocus.setColor(this.dInactiveColor);
+
+                this.uipbExposureProgress.set(0);
+                this.uipbExposureProgress.setColor([.4, .4, .8]);
+
+                this.apiCamera.requestAcquisition();
+            else % abort acquisition:
+                
+                this.apiCamera.abortAcquisition();
+                this.uiButtonAcquire.setText('Acquire');
+                this.uiButtonAcquire.setColor(this.dAcquireColor);
+                this.uiButtonFocus.setText('Focus');
+                this.uiButtonFocus.setColor(this.dFocusColor);
+
+                this.uipbExposureProgress.set(0);
+                
+               
+            end
         end
         
         % Callback for the focus button
         function onFocus(this)
+             if isempty(this.apiCamera)
+                msgbox('No camera connected!');
+                return
+            end
             
+            % Call acquire, unless already acquiring, then call abort:
+            if ~this.apiCamera.lIsAcquiring
+         
+                this.uiButtonFocus.setText('STOP')
+                this.uiButtonFocus.setColor(this.dDisableColor);
+                this.uiButtonAcquire.setText('...')
+                this.uiButtonAcquire.setColor(this.dInactiveColor);
+
+                this.uipbExposureProgress.set(0);
+                this.uipbExposureProgress.setColor([.9, .74, .9]);
+
+                this.apiCamera.startFocus();
+            else % abort acquisition:
+                
+                this.apiCamera.stopFocus();
+                this.uiButtonFocus.setText('Focus');
+                this.uiButtonFocus.setColor(this.dAcquireColor);
+                this.uiButtonAcquire.setText('Acquire');
+                this.uiButtonAcquire.setColor(this.dFocusColor);
+
+                this.uipbExposureProgress.set(0);
+               
+            end
         end
         
         % Callback for the save button
@@ -940,6 +993,12 @@ classdef LSI_Control < handle
 
         function onScan(this, stateList, u8ScanAxisIdx, u8OutputIdx)
             
+            % If already scanning, then stop:
+            if(this.lIsScanning)
+                return
+            end
+                
+                
             
             % validate start conditions
             for k = 1:length(u8ScanAxisIdx)
@@ -998,6 +1057,12 @@ classdef LSI_Control < handle
             % Start scanning
             this.lIsScanning = true;
             this.scanHandler.start();
+        end
+        
+        function stopScan(this)
+            
+            this.scanHandler.stop();
+            this.lIsScanning = false;
         end
         
         % Sets device to enumerated state
