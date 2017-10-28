@@ -7,9 +7,12 @@ classdef APIPVCam < mic.Base
         hDevice
         clock
         
-        dAcquisitionDelay = 1.8; % delay associated with returning an image
+        dPixels = [1340, 1300]
+        
+        dAcquisitionDelay = 1; % delay associated with returning an image
         dExposureTime = -1 % this is not stored on device so we have to handle it here
         dTemperature = 25 % also log this since we don't have access to it during an exposure
+        dBinning = 1
         
         lIsAcquiring = false
         
@@ -83,14 +86,31 @@ classdef APIPVCam < mic.Base
             end
         end
         
-        function lVal = setExposureTime(this, dVal)
+        function lVal = setBinning(this, dVal)
+            this.dBinning = dVal;
             
             % Set exposure time via camera settings
-            lVal = this.hDevice.cameraSettings(false, uint64(dVal*1000), 0, 1339, 0, 1299, 1, 1);
+            lVal = this.hDevice.cameraSettings(false, uint64(this.dExposureTime*1000),...
+                0, this.dPixels(1) - 1, 0, this.dPixels(2) - 1, ...
+                this.dBinning, this.dBinning);
+            
             if ~lVal
                 msgbox('CAMERA EXP TIME/ROI SET FAILED');
             end
+        end
+        
+        function lVal = setExposureTime(this, dVal)
             this.dExposureTime = dVal;
+            
+            % Set exposure time via camera settings
+            lVal = this.hDevice.cameraSettings(false, uint64(this.dExposureTime*1000),...
+                0, this.dPixels(1) - 1, 0, this.dPixels(2) - 1, ...
+                this.dBinning, this.dBinning);
+            
+            if ~lVal
+                msgbox('CAMERA EXP TIME/ROI SET FAILED');
+            end
+            
         end
         
         function dS = getExposureTime(this)
@@ -102,6 +122,7 @@ classdef APIPVCam < mic.Base
             if ~lVal
                 msgbox('CAMERA INIT FAILED');
             end
+            
         end
         
         function disconnect(this)
@@ -165,7 +186,7 @@ classdef APIPVCam < mic.Base
             % Once image is captured, stop camera:
             this.hDevice.stopCapture();
             
-            this.dCurrentImage = reshape(dImg, 1340, 1300);
+            this.dCurrentImage = reshape(dImg, 1340/this.dBinning, 1300/this.dBinning);
             this.lIsImageReady = true;
             this.lIsAcquiring = false;
             this.fhOnImageReady(this.dCurrentImage);
@@ -221,7 +242,7 @@ classdef APIPVCam < mic.Base
             % Once image is captured, stop camera:
             this.hDevice.stopCapture();
             
-            this.dCurrentImage = reshape(dImg, 1340, 1300);
+            this.dCurrentImage = reshape(dImg, 1340/this.dBinning, 1300/this.dBinning);
             this.lIsImageReady = true;
             this.lIsAcquiring = false;
             this.fhOnImageReady(this.dCurrentImage);

@@ -58,6 +58,7 @@ classdef LSI_Control < handle
         uiButtonAcquire
         uiButtonFocus
         uiButtonSaveImage
+        uipBinning
         
         uipbExposureProgress
         
@@ -96,7 +97,7 @@ classdef LSI_Control < handle
         % axes:
         uitgAxes
         hsaAxes
-        aScanMonitors
+        haScanMonitors = {}
         
         % Scan setups
         scanHandler
@@ -109,6 +110,7 @@ classdef LSI_Control < handle
         lIsScanAcquiring = false % whether we're currently in a "scan acquire"
         lIsScanning = false
         
+        ceBinningOptions = {1, 2}
         
         hFigure
         
@@ -360,6 +362,13 @@ classdef LSI_Control < handle
                 'cText', 'Focus', ...
                 'fhDirectCallback', @this.onFocus ...
             );
+        
+            this.uipBinning = mic.ui.common.Popup(...
+                'cLabel', 'Binning', ...
+                'ceOptions', this.ceBinningOptions, ...
+                'fhDirectCallback', @(u8SelectedIndex, cValue) this.onBinningChange(u8SelectedIndex, cValue), ...
+                'lShowLabel', true ...
+            );
              
             
             this.uiButtonSaveImage = mic.ui.common.Button(...
@@ -416,10 +425,12 @@ classdef LSI_Control < handle
                             'cName', '1D-Scan', ...
                             'u8selectedDefaults', uint8(1),...
                             'cConfigPath', fullfile(this.cAppPath, '+config'), ...
+                            'fhOnScanChangeParams', @(ceScanStates, u8ScanAxisIdx, lUseDeltas, cAxisNames)...
+                                                this.updateScanMonitor(ceScanStates, u8ScanAxisIdx, lUseDeltas, cAxisNames, 0), ...
                             'fhOnStopScan', @()this.stopScan, ...
                             'fhOnScan', ...
-                                    @(ceScanStates, u8ScanAxisIdx, u8ScanOutputDeviceIdx)...
-                                            this.onScan(ceScanStates, u8ScanAxisIdx, u8ScanOutputDeviceIdx) ...
+                                    @(ceScanStates, u8ScanAxisIdx, lUseDeltas, u8ScanOutputDeviceIdx, cAxisNames)...
+                                            this.onScan(ceScanStates, u8ScanAxisIdx, lUseDeltas, u8ScanOutputDeviceIdx, cAxisNames) ...
                         );
                     
             this.ss2D = mic.ui.common.ScanSetup( ...
@@ -430,10 +441,12 @@ classdef LSI_Control < handle
                             'cName', '2D-Scan', ...
                             'u8selectedDefaults', uint8([1, 2]),...
                             'cConfigPath', fullfile(this.cAppPath, '+config'), ...
+                            'fhOnScanChangeParams', @(ceScanStates, u8ScanAxisIdx, lUseDeltas, cAxisNames)...
+                                                this.updateScanMonitor(ceScanStates, u8ScanAxisIdx, lUseDeltas, cAxisNames, 0), ...
                             'fhOnStopScan', @()this.stopScan, ...
                             'fhOnScan', ...
-                                    @(ceScanStates, u8ScanAxisIdx, u8ScanOutputDeviceIdx)...
-                                            this.onScan(ceScanStates, u8ScanAxisIdx, u8ScanOutputDeviceIdx) ...
+                                    @(ceScanStates, u8ScanAxisIdx, lUseDeltas, u8ScanOutputDeviceIdx, cAxisNames)...
+                                            this.onScan(ceScanStates, u8ScanAxisIdx, lUseDeltas, u8ScanOutputDeviceIdx, cAxisNames) ...
                         );
                     
             this.ss3D = mic.ui.common.ScanSetup( ...
@@ -444,10 +457,12 @@ classdef LSI_Control < handle
                             'cName', '3D-Scan', ...
                             'u8selectedDefaults', uint8([1, 2, 3]),...
                             'cConfigPath', fullfile(this.cAppPath, '+config'), ...
+                            'fhOnScanChangeParams', @(ceScanStates, u8ScanAxisIdx, lUseDeltas, cAxisNames)...
+                                                this.updateScanMonitor(ceScanStates, u8ScanAxisIdx, lUseDeltas, cAxisNames, 0), ...
                             'fhOnStopScan', @()this.stopScan, ...
                             'fhOnScan', ...
-                                    @(ceScanStates, u8ScanAxisIdx, u8ScanOutputDeviceIdx)...
-                                            this.onScan(ceScanStates, u8ScanAxisIdx, u8ScanOutputDeviceIdx) ...
+                                    @(ceScanStates, u8ScanAxisIdx, lUseDeltas, u8ScanOutputDeviceIdx, cAxisNames)...
+                                            this.onScan(ceScanStates, u8ScanAxisIdx, lUseDeltas, u8ScanOutputDeviceIdx, cAxisNames) ...
                         );
                     
             this.ssExp = mic.ui.common.ScanSetup( ...
@@ -458,15 +473,21 @@ classdef LSI_Control < handle
                             'cName', 'Exp-Scan', ...
                             'u8selectedDefaults', uint8([11, 9]),...
                             'cConfigPath',fullfile(this.cAppPath, '+config'), ...
+                            'fhOnScanChangeParams', @(ceScanStates, u8ScanAxisIdx, lUseDeltas, cAxisNames)...
+                                                this.updateScanMonitor(ceScanStates, u8ScanAxisIdx, lUseDeltas, cAxisNames, 0), ...
                             'fhOnStopScan', @()this.stopScan, ...
                             'fhOnScan', ...
-                                   @(ceScanStates, u8ScanAxisIdx, u8ScanOutputDeviceIdx)...
-                                            this.onScan(ceScanStates, u8ScanAxisIdx, u8ScanOutputDeviceIdx) ...
+                                   @(ceScanStates, u8ScanAxisIdx, lUseDeltas, u8ScanOutputDeviceIdx, cAxisNames)...
+                                            this.onScan(ceScanStates, u8ScanAxisIdx, lUseDeltas, u8ScanOutputDeviceIdx, cAxisNames) ...
                         );
             
             
             % Axes tab group:
             this.uitgAxes = mic.ui.common.Tabgroup('ceTabNames', {'Camera', 'Scan monitor'});
+            
+           
+            
+            
         end
         
 
@@ -875,6 +896,10 @@ classdef LSI_Control < handle
 
         end
         
+        function onBinningChange(this, ~, dValue)
+            this.apiCamera.setBinning(dValue);
+        end
+        
         %%
 
         % -------------------------*****************----------------------
@@ -990,34 +1015,59 @@ classdef LSI_Control < handle
 %% Set up scans:
 
 % State array needs to be structure with property values
-
-        function onScan(this, stateList, u8ScanAxisIdx, u8OutputIdx)
+        function dInitialState = getInitialState(this, u8ScanAxisIdx)
+             % grab initial state of values:
+            dInitialState = struct;
+            dInitialState.values = [];
+            dInitialState.axes = u8ScanAxisIdx;
+            
+            % validate start conditions and get initial state
+            for k = 1:length(u8ScanAxisIdx)
+                dAxis = double(u8ScanAxisIdx(k));
+                switch dAxis
+                    case {1, 2, 3, 4, 5, 6} % Hexapod
+                        dUnit =  this.uiDeviceArrayHexapod{dAxis}.getUnit().name;
+                        dInitialState.values(k) = this.uiDeviceArrayHexapod{dAxis}.getDestCal(dUnit);
+                        if isempty(this.apiHexapod)
+                            msgbox('Hexapod is not connected')
+                            return
+                        end
+                    case {7, 8} % Goni
+                        dUnit =  this.uiDeviceArrayGoni{dAxis}.getUnit().name;
+                        dInitialState.values(k) = this.uiDeviceArrayGoni{dAxis - 6}.getDestCal(dUnit);
+                        if isempty(this.apiGoni)
+                            msgbox('Goni is not connected')
+                            return
+                        end
+                    case {9, 10, 11, 12, 13} % Reticle
+                        dUnit =  this.uiDeviceArrayReticle{dAxis}.getUnit().name;
+                        dInitialState.values(k) = this.uiDeviceArrayReticle{dAxis - 8}.getDestCal(dUnit);
+                        if isempty(this.apiReticle)
+                            msgbox('Reticle is not connected')
+                            return
+                        end
+                end
+            end
+            
+        end
+        
+        function onScan(this, stateList, u8ScanAxisIdx, lUseDeltas, u8OutputIdx, cAxisNames)
             
             % If already scanning, then stop:
             if(this.lIsScanning)
                 return
             end
                 
-                
+            dInitialState = this.getInitialState(u8ScanAxisIdx);
+
             
-            % validate start conditions
-            for k = 1:length(u8ScanAxisIdx)
-                switch double(u8ScanAxisIdx(k))
-                    case {1, 2, 3, 4, 5, 6} % Hexapod
-                        if isempty(this.apiHexapod)
-                            msgbox('Hexapod is not connected')
-                            return
-                        end
-                    case {7, 8} % Goni
-                        if isempty(this.apiGoni)
-                            msgbox('Goni is not connected')
-                            return
-                        end
-                    case {9, 10, 11, 12, 13} % Reticle
-                        if isempty(this.apiReticle)
-                            msgbox('Reticle is not connected')
-                            return
-                        end
+            % If using deltas, modify state to center around current
+            % values:
+            for m = 1:length(u8ScanAxisIdx)
+                if lUseDeltas(m)
+                    for k = 1:length(stateList)
+                        stateList{k}.values(m) = stateList{k}.values(m) + dInitialState.values(m);
+                    end
                 end
             end
             
@@ -1035,13 +1085,13 @@ classdef LSI_Control < handle
             stRecipe.values = stateList; % enumerable list of states that can be read by setState
             stRecipe.unit = struct('unit', 'unit'); % not sure if we need units really, but let's fix later
                         
-            fhSetState = @(stUnit, stState) this.setScanAxisDevicesToState(stState);
-            fhIsAtState = @(stUnit, stState) this.areScanAxisDevicesAtState(stState);
-            fhAcquire = @(stUnit, stState) this.scanAcquire(stState, u8OutputIdx);
-            fhIsAcquired =  @(stUnit, stState) this.scanIsAcquired(stState, u8OutputIdx);
-            fhOnComplete =  @(stUnit, stState) this.onScanComplete();
-            fhOnAbort =  @(stUnit, stState) this.onScanAbort();
-            dDelay = 0.2;
+            fhSetState      = @(stUnit, stState) this.setScanAxisDevicesToState(stState);
+            fhIsAtState     = @(stUnit, stState) this.areScanAxisDevicesAtState(stState);
+            fhAcquire       = @(stUnit, stState) this.scanAcquire(u8OutputIdx, stateList, u8ScanAxisIdx, lUseDeltas, cAxisNames);
+            fhIsAcquired    = @(stUnit, stState) this.scanIsAcquired(stState, u8OutputIdx);
+            fhOnComplete    = @(stUnit, stState) this.onScanComplete(dInitialState, fhSetState);
+            fhOnAbort       = @(stUnit, stState) this.onScanAbort(dInitialState, fhSetState, fhIsAtState);
+            dDelay          = 0.2;
             % Create a new scan:
             this.scanHandler = mic.Scan(this.clock, ...
                                         stRecipe, ...
@@ -1125,6 +1175,8 @@ classdef LSI_Control < handle
             
         end
         
+        % For isAtState, we assume that if the device is ready then it is
+        % at state, since closed loop control is performed in device
         function isAtState = areScanAxisDevicesAtState(this, stState)
             
             dAxes = stState.axes;
@@ -1154,8 +1206,11 @@ classdef LSI_Control < handle
             isAtState = true;
         end
         
-        function scanAcquire(this, stState, outputIdx)
+        function scanAcquire(this, outputIdx, stateList, u8ScanAxisIdx, lUseDeltas, cAxisNames)
            
+            % Notify scan progress that we are at state idx: u8Idx:
+            u8Idx = this.scanHandler.getCurrentStateIndex();
+            this.updateScanMonitor(stateList, u8ScanAxisIdx, lUseDeltas, cAxisNames, u8Idx)
             
             % outputIdx: {'Image capture', 'Image intensity', 'Line Contrast', 'Line Pitch', 'Pause 2s'}
             switch outputIdx
@@ -1185,14 +1240,93 @@ classdef LSI_Control < handle
             
         end
         
-        function onScanComplete(this)
+        function onScanComplete(this, dInitialState, fhSetState)
             this.lIsScanning = false;
+            % Reset to initial state on complete
+            fhSetState([], dInitialState);
         end
         
-        function onScanAbort(this)
+        function onScanAbort(this, dInitialState, fhSetState, fhIsAtState)
             this.lIsScanning = false;
+            % Reset to inital state on abort, but wait for scan to complete
+            % current move before resetting:
+            dafScanAbort = mic.DeferredActionScheduler(...
+                        'clock', this.clock, ...
+                        'fhAction', @()fhSetState([], dInitialState),...
+                        'fhTrigger', @()fhIsAtState([], dInitialState),... % Just needs a dummy state here
+                        'cName', 'DASScanAbortReset', ...
+                        'dDelay', 0.5, ...
+                        'dExpiration', 10, ...
+                        'lShowExpirationMessage', true);
+            dafScanAbort.dispatch();
+
         end
         
+        % This will be called anytime scan parameters or the scan tab is
+        % changed
+        function updateScanMonitor(this, stateList, u8ScanAxisIdx, lUseDeltas, cAxisNames, u8Idx)
+            
+            shiftedStateList = stateList;
+            if (u8Idx == 0) % We haven't started scanning yet so make a proper prieview of relative scan WRT initial state
+                if (any(lUseDeltas))
+                    dInitialState = this.getInitialState(u8ScanAxisIdx);
+                else
+                    dInitialState = [];
+                end
+
+                % If using deltas, modify state to center around current
+                % values:
+                
+                for m = 1:length(u8ScanAxisIdx)
+                    if lUseDeltas(m)
+                        for k = 1:length(stateList)
+                            shiftedStateList{k}.values(m) = stateList{k}.values(m) + dInitialState.values(m);
+                        end
+                    end
+                end
+            end
+            
+            % Plot states on scan monitor tabgroup:
+            for k = 1:length(this.haScanMonitors)
+                delete(this.haScanMonitors{k});
+            end
+            
+            dNumAxes = length(u8ScanAxisIdx);
+            dYPos = 0.05;
+            dYHeight = .72/dNumAxes;
+            for k = 1:dNumAxes
+                
+                this.haScanMonitors{k} = ...
+                    axes('Parent', this.uitgAxes.getTabByName('Scan monitor'),...
+                   'XTick', [0, 1], ...
+                   'YTick', [0, 1], ...
+                   'Position', [0.1, dYPos, .8, dYHeight]);
+                dYPos = dYPos + 0.05 + dYHeight;
+
+            end
+            
+            % unpack state into axes:
+            stateData = [];
+            for k = 1:length(shiftedStateList)
+                state = shiftedStateList{k};
+                for m = 1:dNumAxes
+                    stateData(m, k) = state.values(m);
+                end
+                
+            end
+            for m = 1:dNumAxes
+                plot(this.haScanMonitors{m}, 1:length(stateList), stateData(m, :), 'k');
+                this.haScanMonitors{m}.NextPlot = 'add';
+                if u8Idx > 0
+                     plot(this.haScanMonitors{m}, double(u8Idx), stateData(m, double(u8Idx)),...
+                         'ko', 'LineWidth', 1, 'MarkerFaceColor', [.3, 1, .3], 'MarkerSize', 5);
+                end
+                ylabel(this.haScanMonitors{m}, cAxisNames{m});
+                this.haScanMonitors{m}.NextPlot = 'replace';
+            end
+            
+           
+        end
         
 %% Build main figure
         function build(this)
@@ -1214,6 +1348,7 @@ classdef LSI_Control < handle
            % Main Axes:
            this.uitgAxes.build(this.hFigure, 880, 10, 540, 590);
            this.hsaAxes.build(this.uitgAxes.getTabByName('Camera'), 10, 10, 520, 520);
+
                 
             % Stage panel:
             this.hpStageControls = uipanel(...
@@ -1305,8 +1440,9 @@ classdef LSI_Control < handle
             
             this.uiCommPIMTECamera.build    (this.hpCameraControls, 10,  15);
             
-            this.uiButtonFocus.build        (this.hpCameraControls, 10,  110, 100, 30);
-            this.uiButtonAcquire.build      (this.hpCameraControls, 130, 110, 100, 30);
+            this.uipBinning.build           (this.hpCameraControls, 210, 100, 100, 30);
+            this.uiButtonFocus.build        (this.hpCameraControls, 330, 110, 90,  30);
+            this.uiButtonAcquire.build      (this.hpCameraControls, 430, 110, 90,  30);
             this.uiButtonSaveImage.build    (this.hpCameraControls, 330, 165, 100, 20);
             
             this.uieImageName.build         (this.hpCameraControls, 10, 150, 300, 25);
