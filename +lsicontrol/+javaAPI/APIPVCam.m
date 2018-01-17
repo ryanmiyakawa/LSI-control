@@ -126,6 +126,12 @@ classdef APIPVCam < mic.Base
         end
         
         function disconnect(this)
+             % Tell camera to abort:
+             this.hDevice.stopCapture();
+             this.lIsAcquiring = false;
+             this.lIsFocusing = false;
+             
+             
              lVal = this.hDevice.uninitCamera();
              if ~lVal
                 msgbox('CAMERA UNINIT FAILED');

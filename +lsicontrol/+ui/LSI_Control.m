@@ -2,19 +2,19 @@ classdef LSI_Control < handle
     
     
     properties
-        cAppPath = fileparts(mfilename('fullpath'))
-        cJavaLibPath = 'C:\Users\cxrodev\Documents\MATLAB\metdev\LSI-control';
-        cJavaLibName = 'Met5Instruments.jar';
+        cAppPath        = fileparts(mfilename('fullpath'))
+        cJavaLibPath    = 'C:\Users\cxrodev\Documents\MATLAB\metdev\LSI-control';
+        cJavaLibName    = 'Met5Instruments.jar';
         cDataPath
         cConfigPath
         clock = {}
         vendorDevice
         
         % Colors:
-        dAcquireColor = [.97, 1, .9]
-        dFocusColor = [.93, .9, 1]
-        dDisableColor = [.9, .8, .8]
-        dInactiveColor = [.9, .9, .9]
+        dAcquireColor   = [.97, 1, .9]
+        dFocusColor     = [.93, .9, 1]
+        dDisableColor   = [.9, .8, .8]
+        dInactiveColor  = [.9, .9, .9]
         
         % Comm handles:
          % {mic.ui.device.GetSetLogical 1x1}
@@ -105,6 +105,15 @@ classdef LSI_Control < handle
         ss2D
         ss3D
         ssExp
+        ssCurrentScanSetup %pointer to current scan setup
+        lSaveImagesInScan = false
+        dImageSeriesNumber = 0 %Used to keep track of the number of series 
+        
+        % Scan progress text elements
+        uiTextStatus
+        uiTextTimeElapsed
+        uiTextTimeRemaining
+        uiTextTimeComplete
         
         lAutoSaveImage
         lIsScanAcquiring = false % whether we're currently in a "scan acquire"
@@ -413,8 +422,7 @@ classdef LSI_Control < handle
                 'dWidth', 455);
             
             
-            % Scan tab group:
-            this.uitgScan = mic.ui.common.Tabgroup('ceTabNames', this.ceTabList);
+           
             
             % Scans:
             this.ss1D = mic.ui.common.ScanSetup( ...
@@ -430,7 +438,7 @@ classdef LSI_Control < handle
                             'fhOnStopScan', @()this.stopScan, ...
                             'fhOnScan', ...
                                     @(ceScanStates, u8ScanAxisIdx, lUseDeltas, u8ScanOutputDeviceIdx, cAxisNames)...
-                                            this.onScan(ceScanStates, u8ScanAxisIdx, lUseDeltas, u8ScanOutputDeviceIdx, cAxisNames) ...
+                                            this.onScan(this.ss1D, ceScanStates, u8ScanAxisIdx, lUseDeltas, u8ScanOutputDeviceIdx, cAxisNames) ...
                         );
                     
             this.ss2D = mic.ui.common.ScanSetup( ...
@@ -446,7 +454,7 @@ classdef LSI_Control < handle
                             'fhOnStopScan', @()this.stopScan, ...
                             'fhOnScan', ...
                                     @(ceScanStates, u8ScanAxisIdx, lUseDeltas, u8ScanOutputDeviceIdx, cAxisNames)...
-                                            this.onScan(ceScanStates, u8ScanAxisIdx, lUseDeltas, u8ScanOutputDeviceIdx, cAxisNames) ...
+                                            this.onScan(this.ss2D, ceScanStates, u8ScanAxisIdx, lUseDeltas, u8ScanOutputDeviceIdx, cAxisNames) ...
                         );
                     
             this.ss3D = mic.ui.common.ScanSetup( ...
@@ -462,7 +470,7 @@ classdef LSI_Control < handle
                             'fhOnStopScan', @()this.stopScan, ...
                             'fhOnScan', ...
                                     @(ceScanStates, u8ScanAxisIdx, lUseDeltas, u8ScanOutputDeviceIdx, cAxisNames)...
-                                            this.onScan(ceScanStates, u8ScanAxisIdx, lUseDeltas, u8ScanOutputDeviceIdx, cAxisNames) ...
+                                            this.onScan(this.ss3D, ceScanStates, u8ScanAxisIdx, lUseDeltas, u8ScanOutputDeviceIdx, cAxisNames) ...
                         );
                     
             this.ssExp = mic.ui.common.ScanSetup( ...
@@ -478,12 +486,59 @@ classdef LSI_Control < handle
                             'fhOnStopScan', @()this.stopScan, ...
                             'fhOnScan', ...
                                    @(ceScanStates, u8ScanAxisIdx, lUseDeltas, u8ScanOutputDeviceIdx, cAxisNames)...
-                                            this.onScan(ceScanStates, u8ScanAxisIdx, lUseDeltas, u8ScanOutputDeviceIdx, cAxisNames) ...
+                                            this.onScan(this.ssExp, ceScanStates, u8ScanAxisIdx, lUseDeltas, u8ScanOutputDeviceIdx, cAxisNames) ...
                         );
             
-            
+                 
+            % Scan setup callback triggers.  Used when tabgroup changes tab
+            % focus
+            ceScanCallbackTriggers = ...
+                {@()this.ss1D.triggerCallback(), ...
+                 @()this.ss2D.triggerCallback(), ...
+                 @()this.ss3D.triggerCallback(), ...
+                 @()this.ssExp.triggerCallback()};
+             
+            % Scan tab group:
+            this.uitgScan = mic.ui.common.Tabgroup('ceTabNames', this.ceTabList, ...
+                                                    'fhDirectCallback', ceScanCallbackTriggers);
             % Axes tab group:
-            this.uitgAxes = mic.ui.common.Tabgroup('ceTabNames', {'Camera', 'Scan monitor'});
+            this.uitgAxes = mic.ui.common.Tabgroup('ceTabNames', {'Camera', 'Scan monitor', 'Scan output'});
+           
+            
+            % Scan progress text elements:
+            dStatusFontSize = 14;
+            this.uiTextStatus = mic.ui.common.Text(...
+                'cLabel', 'Status', ...
+                'lShowLabel', true, ...
+                'dFontSize', dStatusFontSize, ... 
+                'cFontWeight', 'bold', ...
+                'cVal', ' ' ...
+                );
+            this.uiTextTimeElapsed = mic.ui.common.Text(...
+                'cLabel', 'Elapsed', ...
+                'lShowLabel', true, ...
+                'dFontSize', dStatusFontSize, ... 
+                'cFontWeight', 'bold', ...
+                'cVal', ' ' ...
+                );
+            this.uiTextTimeRemaining = mic.ui.common.Text(...
+                'cLabel', 'Remaining', ...
+                'lShowLabel', true, ...
+                'dFontSize', dStatusFontSize, ... 
+                'cFontWeight', 'bold', ...
+                'cVal', ' ' ...
+                );
+            this.uiTextTimeComplete = mic.ui.common.Text(...
+                'cLabel', 'Complete', ...
+                'lShowLabel', true, ...
+                'cFontWeight', 'bold', ...
+                'cVal', ' ' ...
+                );
+            this.uiTextTimeComplete.setFontSize(dStatusFontSize);
+            this.uiTextTimeElapsed.setFontSize(dStatusFontSize);
+            this.uiTextTimeRemaining.setFontSize(dStatusFontSize);
+            this.uiTextStatus.setFontSize(dStatusFontSize);
+            
             
            
             
@@ -491,7 +546,7 @@ classdef LSI_Control < handle
         end
         
 
-%% Initializing devices
+%% INITIALIZE HARDWARE DEVICES
 
         function setCameraDeviceAndEnable(this, device)
             this.apiCamera = lsicontrol.javaAPI.APIPVCam( ...
@@ -526,6 +581,7 @@ classdef LSI_Control < handle
         
         % Resets api, bridges, and disconnects hardware device.
         function disconnectCamera(this)
+            
             this.uiDeviceCameraTemperature.turnOff();
             this.uiDeviceCameraTemperature.setDevice([]);
             
@@ -567,7 +623,8 @@ classdef LSI_Control < handle
             end
             
             % Use coupled-axis bridge to create single axis control
-            dHexapodR = [[1 0 0 ; 0 1 0; 0 0 1], zeros(3); zeros(3), [1 0 0 ; 0 1 0; 0 0 1]];  
+            dSubR = [0 -1 0 ; -1 0 0; 0 0 1];
+            dHexapodR = [dSubR, zeros(3); zeros(3), dSubR];  
             for k = 1:6
                 this.oHexapodBridges{k} = lsicontrol.device.CoupledAxisBridge(this.apiHexapod, k, 6);
                 this.oHexapodBridges{k}.setR(dHexapodR);
@@ -608,9 +665,12 @@ classdef LSI_Control < handle
                 end
             end
             
+            dGoniR = [0 1; 1 0];  
+                       
             % Use coupled-axis bridge to create single axis control
             for k = 1:2
                 this.oGoniBridges{k} = lsicontrol.device.CoupledAxisBridge(this.apiGoni, k, 2);
+                this.oGoniBridges{k}.setR(dGoniR);
                 this.uiDeviceArrayGoni{k}.setDevice(this.oGoniBridges{k});
                 this.uiDeviceArrayGoni{k}.turnOn();
                 this.uiDeviceArrayGoni{k}.syncDestination();
@@ -645,7 +705,7 @@ classdef LSI_Control < handle
             this.uiDeviceArrayReticle{index}.setDevice([]);
         end
         
-%% Functions for getting and setting stages directly for Position recaller and hooks for camera
+%% IMAGE ACQUISITION
         
 
         % Callback for what to do when image is ready from camera
@@ -656,6 +716,15 @@ classdef LSI_Control < handle
             % If focusing, don't bother to reset buttons or save image:
             if this.apiCamera.lIsFocusing
                 return
+            end
+            
+            % If we're scanning and flagged to save series route to scan saver
+            if (this.lIsScanning)
+                if this.lSaveImagesInScan
+                    this.saveImageInSeries();
+                else
+                    this.lIsScanAcquiring = false;
+                end
             end
             
             
@@ -675,14 +744,6 @@ classdef LSI_Control < handle
             
             this.uieImageName.set([name, ext]);
             this.uiButtonSaveImage.setColor([.1, .9, .3]);
-            
-            % If we're currently during a scan acquisition, automatically
-            % call the save function.  This is a little sloppy, we can
-            % instead implement this as an events, although that also is
-            % not ideal.
-            if (this.lIsScanAcquiring)
-                this.onSaveImage();
-            end
         end
         
         
@@ -696,7 +757,7 @@ classdef LSI_Control < handle
         end
         
         % Callback for the acquire button
-        function onAcquire(this)
+        function onAcquire(this, ~, ~)
             if isempty(this.apiCamera)
                 msgbox('No camera connected!');
                 return
@@ -723,13 +784,11 @@ classdef LSI_Control < handle
                 this.uiButtonFocus.setColor(this.dFocusColor);
 
                 this.uipbExposureProgress.set(0);
-                
-               
             end
         end
         
         % Callback for the focus button
-        function onFocus(this)
+        function onFocus(this, ~, ~)
              if isempty(this.apiCamera)
                 msgbox('No camera connected!');
                 return
@@ -760,8 +819,39 @@ classdef LSI_Control < handle
             end
         end
         
+        
         % Callback for the save button
-        function onSaveImage(this)
+        function saveImageInSeries(this)
+            dImg = this.apiCamera.dCurrentImage;
+            dIdx = this.scanHandler.getCurrentStateIndex();
+            
+            % Path to the date folder:
+            path = this.getDataSubdirectoryPath();
+            
+            seriesPath = fullfile(path, 'series');
+            if exist(seriesPath, 'dir') ~= 7
+                mkdir(seriesPath);
+            end
+            
+            
+            thisSeriesPath = fullfile(seriesPath, sprintf('series_%0.3d', this.dImageSeriesNumber));
+            if exist(thisSeriesPath, 'dir') ~= 7
+                mkdir(thisSeriesPath);
+            end
+            
+            cFileName = sprintf('%s-%0.3d-%0.3d', datestr(now,'yyyymmdd'), this.dImageSeriesNumber, dIdx);
+                        
+            this.saveAndLogImage(thisSeriesPath, seriesPath, cFileName, dImg);
+            
+            % If we're "scan acquiring", flag that we are now finished
+            if (this.lIsScanAcquiring)
+                this.lIsScanAcquiring = false;
+            end
+        end
+            
+            
+        % Callback for the save button
+        function onSaveImage(this, ~, ~)
             % Check if image is ready:
             if ~this.apiCamera.lIsImageReady || isempty(this.apiCamera.dCurrentImage)
                 msgbox('No image available');
@@ -773,18 +863,15 @@ classdef LSI_Control < handle
             
             path = this.getDataSubdirectoryPath();
            
-            this.saveAndLogImage(path, cFileName, dImg);
-            imwrite(dImg, fullfile(path, cFileName), 'png');
+            this.saveAndLogImage(path, path, cFileName, dImg);
             
+            % Change progress bar color to indicate image has been saved
             this.uipbExposureProgress.set(0);
             this.uipbExposureProgress.setColor([.95, .95, .95]);
             this.uiButtonSaveImage.setColor(this.dInactiveColor);
             
             
-            % If we're "scan acquiring", flag that we are now finished
-            if (this.lIsScanAcquiring)
-                this.lIsScanAcquiring = false;
-            end
+            
         end
         
         % get data subdirectory
@@ -807,16 +894,14 @@ classdef LSI_Control < handle
             nPNGs = length(dir(fullfile(path, '*.png')));
         end
         
-        % When an image is saved, make sure to log it
-        function saveAndLogImage(this, cSubDirPath, cFileName, dImg)
-            
+        function stLog = getHardwareLogs(this)
             % Make log structure:
             stLog = struct();
             
             % Add timestamp
             stLog.timeStamp = datestr(now, 31);
             
-            stLog.fileName = cFileName;
+            stLog.fileName = [];
             
             % Add Hexapod coordinates:
             if isempty(this.apiHexapod)
@@ -856,24 +941,64 @@ classdef LSI_Control < handle
                 stLog.cameraTemp = sprintf('%0.1f', this.apiCamera.getTemperature());
                 stLog.cameraExposureTime = sprintf('%0.4f', this.apiCamera.getExposureTime()); 
             end
+        end
+        
+        
+        function [fid, isCreated] = openOrCreateFile(this, fullFilePath)
+            [d p e] = fileparts(fullFilePath);
             
+            % Check if dir exists:
+            saFls = dir(d);
+            if isempty(saFls)
+                % make the dir:
+                mkdir(d);
+            end
             
-            % Create log file and headers if necessary
-            nl = java.lang.System.getProperty('line.separator').char;
-
+            % now check if a file exists:
+            fid = fopen(fullFilePath, 'r');
+            
+            if (fid == -1)
+                isCreated = true;
+            else
+                fclose(fid);
+                isCreated = false;
+            end
+            fid = fopen(fullFilePath, 'a');
+            
+        end
+        
+        % When an image is saved, make sure to log it
+        function saveAndLogImage(this, cSubDirPath, cLogPath, cFileName, dImg) %#ok<INUSD>
+            
+            % Poll hardware for current values
+            stLog = this.getHardwareLogs();
+            stLog.fileName = cFileName;
+            if this.lIsScanning
+                
+                stLog.scanIndex = sprintf('%d', this.scanHandler.getCurrentStateIndex());
+                stLog.seriesIndex = sprintf('%d', this.dImageSeriesNumber);
+                stLog.scanAxes = strjoin(this.ssCurrentScanSetup.getScanAxisNames(), '-');
+                stLog.scanOutput = this.ssCurrentScanSetup.getOutputName();
+%             else
+%                 stLog.scanIndex = 0;
+%                 stLog.scanAxes = 'N/A';
+%                 stLog.scanOutput = 'N/A';
+            end
+            
+            % Get field names for log, create/open file and log
             ceFieldNames = fieldnames(stLog);
             
-            sFils = dir(cSubDirPath);
-            lDataFileExist = false;
-            for k = 1:length(sFils)
-                if strcmp(sFils(k).name, 'log.csv')
-                    lDataFileExist = true;
-                end
+            cDateStr = datestr(now, 'yyyy-mm-dd-');
+            if this.lIsScanning
+                 [fid, isNewLogFile] = this.openOrCreateFile( fullfile(cLogPath, [cDateStr 'scanlog.csv']));
+            else
+                [fid, isNewLogFile] = this.openOrCreateFile( fullfile(cLogPath, [cDateStr 'log.csv']));
             end
-            logPath = fullfile(cSubDirPath, 'log.csv');
-            fid = fopen(logPath, 'a');
+            
             cWriteStr = '';
-            if ~lDataFileExist
+            % If new log, write headers:
+            nl = java.lang.System.getProperty('line.separator').char;
+            if isNewLogFile
                 for k = 1:length(ceFieldNames)
                     cWriteStr = sprintf('%s%s,',cWriteStr, ceFieldNames{k});
                 end
@@ -883,7 +1008,7 @@ classdef LSI_Control < handle
             
             % Write structure fields
             for k = 1:length(ceFieldNames)
-                cWriteStr = sprintf('%s%s,',cWriteStr, stLog.(ceFieldNames{k}));
+                cWriteStr = sprintf('%s%s,', cWriteStr, stLog.(ceFieldNames{k}));
             end
             cWriteStr(end) = [];
             cWriteStr = [cWriteStr nl];
@@ -893,14 +1018,15 @@ classdef LSI_Control < handle
             % Save .mat file
             [~, fl, ext] = fileparts(cFileName);
             save(fullfile(cSubDirPath, [fl '.mat']), 'stLog', 'dImg');
-
+            
+            imwrite(dImg, fullfile(cSubDirPath, cFileName), 'png');
         end
         
-        function onBinningChange(this, ~, dValue)
-            this.apiCamera.setBinning(dValue);
+        function onBinningChange(this, src, ~)
+            this.apiCamera.setBinning(src.getSelectedValue);
         end
         
-        %%
+ %% POSITION RECALL Stage direct access get/set
 
         % -------------------------*****************----------------------
         % Need to implement these methods:
@@ -1012,7 +1138,7 @@ classdef LSI_Control < handle
              end
         end
             
-%% Set up scans:
+%% SCAN METHODS
 
 % State array needs to be structure with property values
         function dInitialState = getInitialState(this, u8ScanAxisIdx)
@@ -1051,7 +1177,7 @@ classdef LSI_Control < handle
             
         end
         
-        function onScan(this, stateList, u8ScanAxisIdx, lUseDeltas, u8OutputIdx, cAxisNames)
+        function onScan(this, ssScanSetup, stateList, u8ScanAxisIdx, lUseDeltas, u8OutputIdx, cAxisNames)
             
             % If already scanning, then stop:
             if(this.lIsScanning)
@@ -1073,11 +1199,26 @@ classdef LSI_Control < handle
             
             % validate output conditions
             switch u8OutputIdx
-                case {1, 2, 3, 4} % Hexapod
+                case {1, 2, 3, 4} % Camera output
                    if isempty(this.apiCamera)
                        msgbox('No Camera available for image acquisition')
                        return
                    end
+            end
+            
+            % Set series number:
+            
+            switch u8OutputIdx
+                case {1, 3, 4} % Any time image series should be saved
+                   if isempty(this.apiCamera)
+                       msgbox('No Camera available for image acquisition')
+                       return
+                   end
+                   this.dImageSeriesNumber = this.dImageSeriesNumber + 1;
+                   this.lSaveImagesInScan = true;
+                   
+                otherwise
+                   this.lSaveImagesInScan = false;
             end
             
             
@@ -1106,6 +1247,7 @@ classdef LSI_Control < handle
             
             % Start scanning
             this.lIsScanning = true;
+            this.ssCurrentScanSetup = ssScanSetup;
             this.scanHandler.start();
         end
         
@@ -1113,6 +1255,17 @@ classdef LSI_Control < handle
             
             this.scanHandler.stop();
             this.lIsScanning = false;
+        end
+        
+        function updateScanProgress(this)
+            stScanProgress = this.scanHandler.getStatus();
+            
+            % Scan progress text elements:
+            this.uiTextStatus.set(sprintf('%0.1f %%', stScanProgress.dProgress * 100) );
+            this.uiTextTimeElapsed.set(sprintf('%s', stScanProgress.cTimeElapsed));
+            this.uiTextTimeRemaining.set(sprintf('%s', stScanProgress.cTimeRemaining) );
+            this.uiTextTimeComplete.set(sprintf('%s', stScanProgress.cTimeComplete) );
+             
         end
         
         % Sets device to enumerated state
@@ -1210,7 +1363,12 @@ classdef LSI_Control < handle
            
             % Notify scan progress that we are at state idx: u8Idx:
             u8Idx = this.scanHandler.getCurrentStateIndex();
-            this.updateScanMonitor(stateList, u8ScanAxisIdx, lUseDeltas, cAxisNames, u8Idx)
+            this.updateScanMonitor(stateList, u8ScanAxisIdx, lUseDeltas, cAxisNames, u8Idx);
+            
+            % Notify progress monitor
+            this.updateScanProgress();
+            
+            % Use stateList.indices to populate the scan output
             
             % outputIdx: {'Image capture', 'Image intensity', 'Line Contrast', 'Line Pitch', 'Pause 2s'}
             switch outputIdx
@@ -1233,6 +1391,10 @@ classdef LSI_Control < handle
             % outputIdx: {'Image capture', 'Image intensity', 'Line Contrast', 'Line Pitch'}
             switch outputIdx
                 case {1, 2, 3, 4} % Image caputre
+                    % For getting image data, Scan is done acquiring when
+                    % we set the lIsScanAcquiring boolean to false in
+                    % 'onSaveImage'
+                    
                     lVal = ~this.lIsScanAcquiring;
                 case 5 % pause
                     lVal = ~this.lIsScanAcquiring;
@@ -1244,6 +1406,9 @@ classdef LSI_Control < handle
             this.lIsScanning = false;
             % Reset to initial state on complete
             fhSetState([], dInitialState);
+            
+            % Reset scan setup pointer:
+            this.ssCurrentScanSetup = {};
         end
         
         function onScanAbort(this, dInitialState, fhSetState, fhIsAtState)
@@ -1260,11 +1425,14 @@ classdef LSI_Control < handle
                         'lShowExpirationMessage', true);
             dafScanAbort.dispatch();
 
+            % Reset scan setup pointer:
+            this.ssCurrentScanSetup = {};
         end
         
         % This will be called anytime scan parameters or the scan tab is
         % changed
         function updateScanMonitor(this, stateList, u8ScanAxisIdx, lUseDeltas, cAxisNames, u8Idx)
+            
             
             shiftedStateList = stateList;
             if (u8Idx == 0) % We haven't started scanning yet so make a proper prieview of relative scan WRT initial state
@@ -1293,17 +1461,24 @@ classdef LSI_Control < handle
             
             dNumAxes = length(u8ScanAxisIdx);
             dYPos = 0.05;
-            dYHeight = .72/dNumAxes;
+            dYHeight = (.75 - (dNumAxes - 1) * 0.05)/dNumAxes;
             for k = 1:dNumAxes
+                kp = dNumAxes - k + 1;
                 
-                this.haScanMonitors{k} = ...
+                this.haScanMonitors{kp} = ...
                     axes('Parent', this.uitgAxes.getTabByName('Scan monitor'),...
                    'XTick', [0, 1], ...
                    'YTick', [0, 1], ...
                    'Position', [0.1, dYPos, .8, dYHeight]);
                 dYPos = dYPos + 0.05 + dYHeight;
-
+                ylabel(this.haScanMonitors{kp}, cAxisNames{kp});
             end
+            
+            % Don't need to update 
+            if isempty(stateList)
+                return
+            end
+            
             
             % unpack state into axes:
             stateData = [];
@@ -1348,7 +1523,7 @@ classdef LSI_Control < handle
            % Main Axes:
            this.uitgAxes.build(this.hFigure, 880, 10, 540, 590);
            this.hsaAxes.build(this.uitgAxes.getTabByName('Camera'), 10, 10, 520, 520);
-
+            
                 
             % Stage panel:
             this.hpStageControls = uipanel(...
@@ -1395,7 +1570,17 @@ classdef LSI_Control < handle
                     
             this.ssExp.build(this.uitgScan.getTabByIndex(4), 10, 10, 850, 180);
             
-                
+            % Scan progress text elements:
+            tScanMonitor = this.uitgAxes.getTabByName('Scan monitor');
+            hScanMonitorPanel = uipanel(tScanMonitor, ...
+                     'units', 'pixels', ...
+                     'Position', [1 470 560 100] ...
+                     );
+            this.uiTextStatus.build(hScanMonitorPanel, 10, 10, 100, 30);
+            this.uiTextTimeElapsed.build(hScanMonitorPanel, 250, 10, 100, 30);
+            this.uiTextTimeRemaining.build(hScanMonitorPanel, 10, 50, 100, 30);
+            this.uiTextTimeComplete.build(hScanMonitorPanel, 250, 50, 100, 30);
+            
             % Position recall:
             this.uiSLHexapod.build(this.hpPositionRecall, 10, 390, 340, 188);
             this.uiSLGoni.build(this.hpPositionRecall, 10, 200, 340, 188);
