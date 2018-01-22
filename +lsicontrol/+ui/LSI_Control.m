@@ -1,4 +1,4 @@
-classdef LSI_Control < handle
+classdef LSI_Control < mic.Base
     
     
     properties
@@ -375,7 +375,7 @@ classdef LSI_Control < handle
             this.uipBinning = mic.ui.common.Popup(...
                 'cLabel', 'Binning', ...
                 'ceOptions', this.ceBinningOptions, ...
-                'fhDirectCallback', @(u8SelectedIndex, cValue) this.onBinningChange(u8SelectedIndex, cValue), ...
+                'fhDirectCallback', @(src, evt) this.onBinningChange(src, evt), ...
                 'lShowLabel', true ...
             );
              
@@ -1522,7 +1522,7 @@ classdef LSI_Control < handle
            
            % Main Axes:
            this.uitgAxes.build(this.hFigure, 880, 10, 540, 590);
-           this.hsaAxes.build(this.uitgAxes.getTabByName('Camera'), 10, 10, 520, 520);
+           this.hsaAxes.build(this.uitgAxes.getTabByName('Camera'), this.hFigure, 10, 10, 520, 520);
             
                 
             % Stage panel:
@@ -1547,27 +1547,15 @@ classdef LSI_Control < handle
                 'Position', [510 250 360 600] ...
                 );
         
-            % Camera control panel:
-            this.hpCameraControls = uipanel(...
-                'Parent', this.hFigure,...
-                'Units', 'pixels',...
-                'Title', 'Camera control',...
-                'FontWeight', 'Bold',...
-                'Clipping', 'on',...
-                'BorderWidth',0, ... 
-                'Position', [880 610 540 240] ...
-            );
+
         
             % Scan controls:
             this.uitgScan.build(this.hFigure, 10, 10, 860, 230);
 
              % Scans:
             this.ss1D.build(this.uitgScan.getTabByIndex(1), 10, 10, 850, 180); 
-                    
             this.ss2D.build(this.uitgScan.getTabByIndex(2), 10, 10, 850, 180);
-                    
             this.ss3D.build(this.uitgScan.getTabByIndex(3), 10, 10, 850, 180);
-                    
             this.ssExp.build(this.uitgScan.getTabByIndex(4), 10, 10, 850, 180);
             
             % Scan progress text elements:
@@ -1619,6 +1607,21 @@ classdef LSI_Control < handle
             end
 
             
+            
+            
+            
+            
+                        % Camera control panel:
+            this.hpCameraControls = uipanel(...
+                'Parent', this.hFigure,...
+                'Units', 'pixels',...
+                'Title', 'Camera control',...
+                'FontWeight', 'Bold',...
+                'Clipping', 'on',...
+                'BorderWidth',0, ... 
+                'Position', [880 610 540 240] ...
+            );
+            
             % Camera UI elements
             this.uiDeviceCameraTemperature.build(this.hpCameraControls, 10, 40);            
             this.uiDeviceCameraExposureTime.build(this.hpCameraControls, 10, 70);
@@ -1634,9 +1637,7 @@ classdef LSI_Control < handle
             
             
             this.uipbExposureProgress.build(this.hpCameraControls, 10, 200);
-      
-            % Position recall elements
-            
+                  
             % Button colors:
             this.uiButtonAcquire.setText('Acquire')
             this.uiButtonAcquire.setColor(this.dAcquireColor);
