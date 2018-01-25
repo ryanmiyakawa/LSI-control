@@ -15,7 +15,7 @@
 		},
 		{
 			"name": "deg",
-			"slope": 0.0572958
+			"slope": 0.0572958,
 			"offset": 0,
 			"precision": 3
 		}

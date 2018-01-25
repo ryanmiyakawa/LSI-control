@@ -127,8 +127,8 @@ classdef LSI_Control < mic.Base
     end
     
     properties (Constant)
-        dWidth  = 1440;
-        dHeight =  900;
+        dWidth  = 1750;
+        dHeight =  1000;
         
         dMultiAxisSeparation = 30;
         
@@ -1521,8 +1521,8 @@ classdef LSI_Control < mic.Base
            
            
            % Main Axes:
-           this.uitgAxes.build(this.hFigure, 880, 10, 540, 590);
-           this.hsaAxes.build(this.uitgAxes.getTabByName('Camera'), this.hFigure, 10, 10, 520, 520);
+           this.uitgAxes.build(this.hFigure, 880, 10, 860, 785);
+           this.hsaAxes.build(this.uitgAxes.getTabByName('Camera'), this.hFigure, 10, 10, 810, 720);
             
                 
             % Stage panel:
@@ -1533,7 +1533,7 @@ classdef LSI_Control < mic.Base
                 'FontWeight', 'Bold',...
                 'Clipping', 'on',...
                 'BorderWidth',0, ... 
-                'Position', [10 250 490 600] ...
+                'Position', [10 370 490 600] ...
             );
         
             % Scan control panel:
@@ -1544,19 +1544,19 @@ classdef LSI_Control < mic.Base
                 'FontWeight', 'Bold',...
                 'Clipping', 'on',...
                 'BorderWidth',0, ... 
-                'Position', [510 250 360 600] ...
+                'Position', [510 370 360 600] ...
                 );
         
 
         
             % Scan controls:
-            this.uitgScan.build(this.hFigure, 10, 10, 860, 230);
+            this.uitgScan.build(this.hFigure, 10, 10, 860, 345);
 
              % Scans:
-            this.ss1D.build(this.uitgScan.getTabByIndex(1), 10, 10, 850, 180); 
-            this.ss2D.build(this.uitgScan.getTabByIndex(2), 10, 10, 850, 180);
-            this.ss3D.build(this.uitgScan.getTabByIndex(3), 10, 10, 850, 180);
-            this.ssExp.build(this.uitgScan.getTabByIndex(4), 10, 10, 850, 180);
+            this.ss1D.build(this.uitgScan.getTabByIndex(1), 10, 10, 850, 270); 
+            this.ss2D.build(this.uitgScan.getTabByIndex(2), 10, 10, 850, 270);
+            this.ss3D.build(this.uitgScan.getTabByIndex(3), 10, 10, 850, 270);
+            this.ssExp.build(this.uitgScan.getTabByIndex(4), 10, 10, 850, 270);
             
             % Scan progress text elements:
             tScanMonitor = this.uitgAxes.getTabByName('Scan monitor');
@@ -1571,8 +1571,8 @@ classdef LSI_Control < mic.Base
             
             % Position recall:
             this.uiSLHexapod.build(this.hpPositionRecall, 10, 390, 340, 188);
-            this.uiSLGoni.build(this.hpPositionRecall, 10, 200, 340, 188);
-            this.uiSLReticle.build(this.hpPositionRecall, 10, 10, 340, 188);
+%             this.uiSLGoni.build(this.hpPositionRecall, 10, 200, 340, 188);
+            this.uiSLReticle.build(this.hpPositionRecall, 10, 200, 340, 188);
             
             
             % Stage UI elements
@@ -1589,14 +1589,16 @@ classdef LSI_Control < mic.Base
                 dAxisPos = dAxisPos + this.dMultiAxisSeparation;
             end
             dAxisPos = dAxisPos + 20;
-            this.uiCommSmarActMcsGoni.build(this.hpStageControls,  dLeft, dAxisPos - 7);
-            this.uibHomeGoni.build(this.hpStageControls, dLeft + 340, dAxisPos - 5, 95, 20);
-            dAxisPos = dAxisPos + 20;
-            for k = 1:length(this.cGoniLabels)
-                this.uiDeviceArrayGoni{k}.build(this.hpStageControls, ...
-                    dLeft, dAxisPos);
-                dAxisPos = dAxisPos + this.dMultiAxisSeparation;
-            end
+            
+            % Don't build goni stuff for now
+%             this.uiCommSmarActMcsGoni.build(this.hpStageControls,  dLeft, dAxisPos - 7);
+%             this.uibHomeGoni.build(this.hpStageControls, dLeft + 340, dAxisPos - 5, 95, 20);
+%             dAxisPos = dAxisPos + 20;
+%             for k = 1:length(this.cGoniLabels)
+%                 this.uiDeviceArrayGoni{k}.build(this.hpStageControls, ...
+%                     dLeft, dAxisPos);
+%                 dAxisPos = dAxisPos + this.dMultiAxisSeparation;
+%             end
             dAxisPos = dAxisPos + 20;
             this.uiCommDeltaTauPowerPmac.build(this.hpStageControls,  dLeft, dAxisPos - 7);
             dAxisPos = dAxisPos + 20;
@@ -1606,12 +1608,9 @@ classdef LSI_Control < mic.Base
                 dAxisPos = dAxisPos + this.dMultiAxisSeparation;
             end
 
+
             
-            
-            
-            
-            
-                        % Camera control panel:
+            % Camera control panel:
             this.hpCameraControls = uipanel(...
                 'Parent', this.hFigure,...
                 'Units', 'pixels',...
@@ -1619,7 +1618,7 @@ classdef LSI_Control < mic.Base
                 'FontWeight', 'Bold',...
                 'Clipping', 'on',...
                 'BorderWidth',0, ... 
-                'Position', [880 610 540 240] ...
+                'Position', [880 800 860 170] ...
             );
             
             % Camera UI elements
@@ -1628,15 +1627,17 @@ classdef LSI_Control < mic.Base
             
             this.uiCommPIMTECamera.build    (this.hpCameraControls, 10,  15);
             
-            this.uipBinning.build           (this.hpCameraControls, 210, 100, 100, 30);
-            this.uiButtonFocus.build        (this.hpCameraControls, 330, 110, 90,  30);
-            this.uiButtonAcquire.build      (this.hpCameraControls, 430, 110, 90,  30);
-            this.uiButtonSaveImage.build    (this.hpCameraControls, 330, 165, 100, 20);
+            this.uipBinning.build           (this.hpCameraControls, 580, 40, 70, 30);
+            this.uiButtonFocus.build        (this.hpCameraControls, 680, 50, 80,  30);
+            this.uiButtonAcquire.build      (this.hpCameraControls, 770, 50, 80,  30);
             
-            this.uieImageName.build         (this.hpCameraControls, 10, 150, 300, 25);
+            this.uieImageName.build         (this.hpCameraControls, 180 + 370, 95, 200, 25);
+            this.uiButtonSaveImage.build    (this.hpCameraControls, 400 + 370, 110, 80, 20);
+           
             
             
-            this.uipbExposureProgress.build(this.hpCameraControls, 10, 200);
+            
+            this.uipbExposureProgress.build(this.hpCameraControls, 10, 115);
                   
             % Button colors:
             this.uiButtonAcquire.setText('Acquire')
