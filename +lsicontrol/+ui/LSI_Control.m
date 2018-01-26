@@ -47,9 +47,7 @@ classdef LSI_Control < mic.Base
         apiReticle
         apiCamera
         
-        % Scans:
-        uitgScan
-        ceTabList = {'1D-scan', '2D-scan', '3D-scan', 'LSI P/S image acquisition'}
+
         
         % Camera
         uiDeviceCameraTemperature
@@ -99,12 +97,20 @@ classdef LSI_Control < mic.Base
         hsaAxes
         haScanMonitors = {}
         
+        haScanOutput
+        
+        % Scans:
+        uitgScan
+        ceTabList = {'1D-scan', '2D-scan', '3D-scan', 'LSI P/S', 'LSI P/S Cont. Correction'}
+        
+        
         % Scan setups
         scanHandler
         ss1D
         ss2D
         ss3D
-        ssExp
+        ssExp1
+        ssExp2
         ssCurrentScanSetup %pointer to current scan setup
         lSaveImagesInScan = false
         dImageSeriesNumber = 0 %Used to keep track of the number of series 
@@ -118,6 +124,15 @@ classdef LSI_Control < mic.Base
         lAutoSaveImage
         lIsScanAcquiring = false % whether we're currently in a "scan acquire"
         lIsScanning = false
+        
+        % Scan ouput:
+        stLastScan
+        
+        dNumScanOutputAxes
+        ceScanCoordinates
+        dLinearScanOutput
+        dScanOutput
+        
         
         ceBinningOptions = {1, 2}
         
@@ -473,30 +488,46 @@ classdef LSI_Control < mic.Base
                                             this.onScan(this.ss3D, ceScanStates, u8ScanAxisIdx, lUseDeltas, u8ScanOutputDeviceIdx, cAxisNames) ...
                         );
                     
-            this.ssExp = mic.ui.common.ScanSetup( ...
+            this.ssExp1 = lsicontrol.ui.ScanSetupLSI( ...
                             'cLabel', 'Saved pos', ...
                             'ceOutputOptions', this.ceScanOutputLables, ...
                             'ceScanAxisLabels', this.ceScanAxisLabels, ...
                             'dScanAxes', 2, ...
                             'cName', 'Exp-Scan', ...
-                            'u8selectedDefaults', uint8([11, 9]),...
+                            'u8selectedDefaults', uint8([9, 10]),...
                             'cConfigPath',fullfile(this.cAppPath, '+config'), ...
                             'fhOnScanChangeParams', @(ceScanStates, u8ScanAxisIdx, lUseDeltas, cAxisNames)...
                                                 this.updateScanMonitor(ceScanStates, u8ScanAxisIdx, lUseDeltas, cAxisNames, 0), ...
                             'fhOnStopScan', @()this.stopScan, ...
                             'fhOnScan', ...
                                    @(ceScanStates, u8ScanAxisIdx, lUseDeltas, u8ScanOutputDeviceIdx, cAxisNames)...
-                                            this.onScan(this.ssExp, ceScanStates, u8ScanAxisIdx, lUseDeltas, u8ScanOutputDeviceIdx, cAxisNames) ...
+                                            this.onScan(this.ssExp1, ceScanStates, u8ScanAxisIdx, lUseDeltas, u8ScanOutputDeviceIdx, cAxisNames) ...
                         );
             
-                 
+            this.ssExp2 = lsicontrol.ui.ScanSetupLSI( ...
+                            'cLabel', 'Saved pos', ...
+                            'ceOutputOptions', this.ceScanOutputLables, ...
+                            'ceScanAxisLabels', this.ceScanAxisLabels, ...
+                            'dScanAxes', 4, ...
+                            'cName', 'Exp-Scan', ...
+                            'u8selectedDefaults', uint8([9, 10, 10, 9]),...
+                            'cConfigPath',fullfile(this.cAppPath, '+config'), ...
+                            'fhOnScanChangeParams', @(ceScanStates, u8ScanAxisIdx, lUseDeltas, cAxisNames)...
+                                                this.updateScanMonitor(ceScanStates, u8ScanAxisIdx, lUseDeltas, cAxisNames, 0), ...
+                            'fhOnStopScan', @()this.stopScan, ...
+                            'fhOnScan', ...
+                                   @(ceScanStates, u8ScanAxisIdx, lUseDeltas, u8ScanOutputDeviceIdx, cAxisNames)...
+                                            this.onScan(this.ssExp2, ceScanStates, u8ScanAxisIdx, lUseDeltas, u8ScanOutputDeviceIdx, cAxisNames) ...
+                        );
+                    
             % Scan setup callback triggers.  Used when tabgroup changes tab
             % focus
             ceScanCallbackTriggers = ...
                 {@()this.ss1D.triggerCallback(), ...
                  @()this.ss2D.triggerCallback(), ...
                  @()this.ss3D.triggerCallback(), ...
-                 @()this.ssExp.triggerCallback()};
+                 @()this.ssExp1.triggerCallback(), ...
+                 @()this.ssExp2.triggerCallback()};
              
             % Scan tab group:
             this.uitgScan = mic.ui.common.Tabgroup('ceTabNames', this.ceTabList, ...
@@ -1152,26 +1183,37 @@ classdef LSI_Control < mic.Base
                 dAxis = double(u8ScanAxisIdx(k));
                 switch dAxis
                     case {1, 2, 3, 4, 5, 6} % Hexapod
+                        if isempty(this.apiHexapod)
+                            fprintf('Hexapod is not connected\n')
+                            dInitialState.values(k) = 0;
+                            continue
+%                             return
+                        end
+                        
                         dUnit =  this.uiDeviceArrayHexapod{dAxis}.getUnit().name;
                         dInitialState.values(k) = this.uiDeviceArrayHexapod{dAxis}.getDestCal(dUnit);
-                        if isempty(this.apiHexapod)
-                            msgbox('Hexapod is not connected')
-                            return
-                        end
+                        
                     case {7, 8} % Goni
+                        if isempty(this.apiGoni)
+                            fprintf('Goni is not connected\n')
+                            dInitialState.values(k) = 0;
+                            continue
+%                             return
+                        end
                         dUnit =  this.uiDeviceArrayGoni{dAxis}.getUnit().name;
                         dInitialState.values(k) = this.uiDeviceArrayGoni{dAxis - 6}.getDestCal(dUnit);
-                        if isempty(this.apiGoni)
-                            msgbox('Goni is not connected')
-                            return
-                        end
+                        
                     case {9, 10, 11, 12, 13} % Reticle
+                        if isempty(this.apiReticle)
+%                             msgbox('Reticle is not connected\n')
+                            dInitialState.values(k) = 0;
+                            continue
+%                             return
+                        end
+                        
                         dUnit =  this.uiDeviceArrayReticle{dAxis}.getUnit().name;
                         dInitialState.values(k) = this.uiDeviceArrayReticle{dAxis - 8}.getDestCal(dUnit);
-                        if isempty(this.apiReticle)
-                            msgbox('Reticle is not connected')
-                            return
-                        end
+                        
                 end
             end
             
@@ -1246,6 +1288,7 @@ classdef LSI_Control < mic.Base
                                         );
             
             % Start scanning
+            this.setupScanOutput(stateList, u8ScanAxisIdx)
             this.lIsScanning = true;
             this.ssCurrentScanSetup = ssScanSetup;
             this.scanHandler.start();
@@ -1370,6 +1413,9 @@ classdef LSI_Control < mic.Base
             
             % Use stateList.indices to populate the scan output
             
+            % Each output should have a value to plot
+            dAcquiredValue = 1;
+            
             % outputIdx: {'Image capture', 'Image intensity', 'Line Contrast', 'Line Pitch', 'Pause 2s'}
             switch outputIdx
                 case {1, 2, 3, 4} % Image caputre
@@ -1377,14 +1423,16 @@ classdef LSI_Control < mic.Base
                     this.lIsScanAcquiring = true;
             
                     this.onAcquire();
-                    % This will call image caputre and then save
+                    % This will call image capture and then save
                     
                 case 5 % pause
                     pause(2);
+                    dAcquiredValue = rand(1);
                     this.lIsScanAcquiring = false;
-                    
-                    
             end
+            
+            % Send plottable values to scanOutputHandler
+            this.handleUpdateScanOutput(u8Idx, stateList{u8Idx}, dAcquiredValue, cAxisNames)
         end
         
         function lVal = scanIsAcquired(this, stState, outputIdx)
@@ -1429,6 +1477,71 @@ classdef LSI_Control < mic.Base
             this.ssCurrentScanSetup = {};
         end
         
+        % Sets up scan output axis to plot the results of a 1-dim or 2-dim
+        % scan
+        function setupScanOutput(this, stateList, u8ScanAxisIdx)
+            this.dNumScanOutputAxes = length(u8ScanAxisIdx);
+            this.dLinearScanOutput = zeros(1, length(stateList));
+            
+            dAxisValues = zeros(length(stateList), length(u8ScanAxisIdx));
+            % Assemble all state values for each axis:
+            for k = 1:length(stateList)
+                dAxisValues(k,:) = stateList{k}.values;
+            end
+            % sort each column:
+            dAxisValues = sort(dAxisValues);
+            
+            this.ceScanCoordinates = cell(1, length(u8ScanAxisIdx));
+            
+            for k = 1:length(u8ScanAxisIdx)
+                this.ceScanCoordinates{k} = unique(dAxisValues(:,k)');
+            end
+            
+            % make scan output for 1 or 2 axis cases
+            switch length(u8ScanAxisIdx)
+                case 1
+                    this.dScanOutput = zeros(1, length(u8ScanAxisIdx));
+                case 2
+                    dXidx = this.ceScanCoordinates{1};
+                    dYidx = this.ceScanCoordinates{2};
+                    this.dScanOutput = zeros(size(meshgrid(dXidx, dYidx)));
+                case 3
+                    dXidx = this.ceScanCoordinates{1};
+                    dYidx = this.ceScanCoordinates{2};
+                    dZidx = this.ceScanCoordinates{3};
+                    this.dScanOutput = zeros(size(meshgrid(dXidx, dYidx, dZidx)));
+            end
+            
+        end
+        
+        function handleUpdateScanOutput(this, u8Idx, stStateElement, dAcquiredValue, cAxisNames)
+            % Log linear value:
+            this.dLinearScanOutput(u8Idx) = dAcquiredValue;
+            
+            % make scan output for 1 or 2 axis cases
+            switch length(this.ceScanCoordinates)
+                case 1
+                    dXidx = find(this.ceScanCoordinates{1} == stStateElement.value);
+                    this.dScanOutput(dXidx) = dAcquiredValue; %#ok<FNDSB>
+                    
+                    plot(this.haScanOutput, dXidx, this.dScanOutput);
+                    
+                case 2
+                    dXidx = find(this.ceScanCoordinates{1} == stStateElement.value(1));
+                    dYidx = find(this.ceScanCoordinates{2} == stStateElement.value(2));
+                    this.dScanOutput(dXidx, dYidx) = dAcquiredValue; %#ok<FNDSB>
+                    
+                    imagesc(this.haScanOutput, dXidx, dYidx, this.dScanOutput);
+                case 3
+                    dXidx = find(this.ceScanCoordinates{1} == stStateElement.value(1));
+                    dYidx = find(this.ceScanCoordinates{2} == stStateElement.value(2));
+                    dZidx = find(this.ceScanCoordinates{3} == stStateElement.value(3));
+                    this.dScanOutput(dXidx, dYidx, dZidx) = dAcquiredValue; %#ok<FNDSB>
+                    
+                    % don't do anything right now
+            end
+        end
+        
         % This will be called anytime scan parameters or the scan tab is
         % changed
         function updateScanMonitor(this, stateList, u8ScanAxisIdx, lUseDeltas, cAxisNames, u8Idx)
@@ -1469,7 +1582,8 @@ classdef LSI_Control < mic.Base
                     axes('Parent', this.uitgAxes.getTabByName('Scan monitor'),...
                    'XTick', [0, 1], ...
                    'YTick', [0, 1], ...
-                   'Position', [0.1, dYPos, .8, dYHeight]);
+                   'Position', [0.1, dYPos, .8, dYHeight], ... 
+                    'FontSize', 12);
                 dYPos = dYPos + 0.05 + dYHeight;
                 ylabel(this.haScanMonitors{kp}, cAxisNames{kp});
             end
@@ -1556,18 +1670,26 @@ classdef LSI_Control < mic.Base
             this.ss1D.build(this.uitgScan.getTabByIndex(1), 10, 10, 850, 270); 
             this.ss2D.build(this.uitgScan.getTabByIndex(2), 10, 10, 850, 270);
             this.ss3D.build(this.uitgScan.getTabByIndex(3), 10, 10, 850, 270);
-            this.ssExp.build(this.uitgScan.getTabByIndex(4), 10, 10, 850, 270);
+            this.ssExp1.build(this.uitgScan.getTabByIndex(4), 10, 10, 850, 270);
+            this.ssExp2.build(this.uitgScan.getTabByIndex(5), 10, 10, 850, 270);
             
             % Scan progress text elements:
-            tScanMonitor = this.uitgAxes.getTabByName('Scan monitor');
-            hScanMonitorPanel = uipanel(tScanMonitor, ...
+            uitScanMonitor = this.uitgAxes.getTabByName('Scan monitor');
+            hScanMonitorPanel = uipanel(uitScanMonitor, ...
                      'units', 'pixels', ...
-                     'Position', [1 470 560 100] ...
+                     'Position', [1 620 560 100] ...
                      );
             this.uiTextStatus.build(hScanMonitorPanel, 10, 10, 100, 30);
             this.uiTextTimeElapsed.build(hScanMonitorPanel, 250, 10, 100, 30);
             this.uiTextTimeRemaining.build(hScanMonitorPanel, 10, 50, 100, 30);
             this.uiTextTimeComplete.build(hScanMonitorPanel, 250, 50, 100, 30);
+            
+            % Scan output
+            uitScanOutput = this.uitgAxes.getTabByName('Scan output');
+            this.haScanOutput = axes('Parent', uitScanOutput, ...
+                                 'Units', 'pixels', ...
+                                 'Position', [50, 50, 750, 650], ...
+                                 'XTick', [], 'YTick', []);     
             
             % Position recall:
             this.uiSLHexapod.build(this.hpPositionRecall, 10, 390, 340, 188);
