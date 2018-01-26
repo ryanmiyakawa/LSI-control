@@ -1504,8 +1504,17 @@ classdef LSI_Control < mic.Base
                     case 2 % Grab camera image and integrate intensity:
                         dImg = this.apiCamera.getImage();
                         dAcquiredValue = sum(dImg(:));
-                    
-                    
+                        
+                    case 3 % Line Contrast
+                        dImg = this.apiCamera.getImage();
+                        
+                        % Get contrast here:
+                        dAcquiredValue = sum(dImg(:));
+                    case 4 % Line pitch
+                        dImg = this.apiCamera.getImage();
+                        
+                        % Get Pitch here:
+                        dAcquiredValue = sum(dImg(:));
                 end
                 
                 
