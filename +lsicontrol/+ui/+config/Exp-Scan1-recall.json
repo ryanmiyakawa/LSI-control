@@ -1,0 +1,1 @@
+[{"key":"Hexapod test scan","value":[["Hexapod X",0,0.1,1,0,false],["Hexapod Y",0,0.1,1,0,false],"Pause 2s",false]},{"key":"LSI EXP 10-pt","value":[["Ret Fine X",0,0.0234,0.234,0,true],["Ret Fine Y",0,0.0234,0.234,0,true],"Image capture",false]}]
