@@ -1504,7 +1504,7 @@ classdef LSI_Control < mic.Base
                 case 2
                     dXidx = this.ceScanCoordinates{1};
                     dYidx = this.ceScanCoordinates{2};
-                    this.dScanOutput = zeros(size(meshgrid(dXidx, dYidx)));
+                    this.dScanOutput = zeros(length(dYidx), length(dXidx));
                 case 3
                     dXidx = this.ceScanCoordinates{1};
                     dYidx = this.ceScanCoordinates{2};
@@ -1529,9 +1529,10 @@ classdef LSI_Control < mic.Base
                 case 2
                     dXidx = find(this.ceScanCoordinates{1} == stStateElement.values(1));
                     dYidx = find(this.ceScanCoordinates{2} == stStateElement.values(2));
-                    this.dScanOutput(dXidx, dYidx) = dAcquiredValue; %#ok<FNDSB>
+                    this.dScanOutput(dYidx, dXidx) = dAcquiredValue; %#ok<FNDSB>
                     
-                    imagesc(this.haScanOutput, this.ceScanCoordinates{1}, this.ceScanCoordinates{2}, this.dScanOutput);
+                    imagesc(this.haScanOutput, this.ceScanCoordinates{1}, this.ceScanCoordinates{2}, (this.dScanOutput));
+                    this.haScanOutput.YDir = 'normal';
                 case 3
                     dXidx = find(this.ceScanCoordinates{1} == stStateElement.values(1));
                     dYidx = find(this.ceScanCoordinates{2} == stStateElement.values(2));
