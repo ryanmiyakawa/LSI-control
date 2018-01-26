@@ -88,6 +88,7 @@ classdef ScanSetupLSI < mic.ui.common.ScanSetup
                 
                 case 1 % X-Y scan
                     % Axis 1
+                    
                     for k = 1:length(ceScanRanges{1})
                             ceScanStates{end + 1} = struct('indices', [k, 1], ...
                                 'axes', u8ScanAxisIdx(1:2), ...
@@ -126,6 +127,26 @@ classdef ScanSetupLSI < mic.ui.common.ScanSetup
             end
        end
        
+        % Builds scan states and passes them to the fhOnScan callback
+        function routeScanInfoToCallback(this, ~, ~)
+            
+            [ceScanStates, u8ScanAxisIdx, lUseDeltas]  = this.buildScanStateArray();
+            % Pass out scan axes and output for validation
+            u8OutputIdx = this.uipOutput.getSelectedIndex();
+            
+            cAxisNames = this.ceScanAxisLabels(u8ScanAxisIdx);
+            if ~isempty(ceScanStates)
+                this.fhOnScan(ceScanStates, u8ScanAxisIdx(1:2), lUseDeltas, u8OutputIdx, cAxisNames);
+            else
+                msgbox('No states to scan, check scan parameters');
+            end
+            
+            % scan "states" are structures with properties: axes, values
+            % where axes is an array of the indices of axes as defined in
+            % the scanAxisSetup uipopup, and values are the corresponding
+            % values
+        end
+        
        function paramChangeCallback(this)
             % For testing just echo somethign:
             disp('param change callback');

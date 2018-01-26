@@ -1500,7 +1500,7 @@ classdef LSI_Control < mic.Base
             % make scan output for 1 or 2 axis cases
             switch length(u8ScanAxisIdx)
                 case 1
-                    this.dScanOutput = zeros(1, length(u8ScanAxisIdx));
+                    this.dScanOutput = zeros(1, length(this.ceScanCoordinates{1}));
                 case 2
                     dXidx = this.ceScanCoordinates{1};
                     dYidx = this.ceScanCoordinates{2};
@@ -1521,21 +1521,21 @@ classdef LSI_Control < mic.Base
             % make scan output for 1 or 2 axis cases
             switch length(this.ceScanCoordinates)
                 case 1
-                    dXidx = find(this.ceScanCoordinates{1} == stStateElement.value);
+                    dXidx = find(this.ceScanCoordinates{1} == stStateElement.values);
                     this.dScanOutput(dXidx) = dAcquiredValue; %#ok<FNDSB>
                     
-                    plot(this.haScanOutput, dXidx, this.dScanOutput);
+                    plot(this.haScanOutput, this.ceScanCoordinates{1}, this.dScanOutput);
                     
                 case 2
-                    dXidx = find(this.ceScanCoordinates{1} == stStateElement.value(1));
-                    dYidx = find(this.ceScanCoordinates{2} == stStateElement.value(2));
+                    dXidx = find(this.ceScanCoordinates{1} == stStateElement.values(1));
+                    dYidx = find(this.ceScanCoordinates{2} == stStateElement.values(2));
                     this.dScanOutput(dXidx, dYidx) = dAcquiredValue; %#ok<FNDSB>
                     
-                    imagesc(this.haScanOutput, dXidx, dYidx, this.dScanOutput);
+                    imagesc(this.haScanOutput, this.ceScanCoordinates{1}, this.ceScanCoordinates{2}, this.dScanOutput);
                 case 3
-                    dXidx = find(this.ceScanCoordinates{1} == stStateElement.value(1));
-                    dYidx = find(this.ceScanCoordinates{2} == stStateElement.value(2));
-                    dZidx = find(this.ceScanCoordinates{3} == stStateElement.value(3));
+                    dXidx = find(this.ceScanCoordinates{1} == stStateElement.values(1));
+                    dYidx = find(this.ceScanCoordinates{2} == stStateElement.values(2));
+                    dZidx = find(this.ceScanCoordinates{3} == stStateElement.values(3));
                     this.dScanOutput(dXidx, dYidx, dZidx) = dAcquiredValue; %#ok<FNDSB>
                     
                     % don't do anything right now
