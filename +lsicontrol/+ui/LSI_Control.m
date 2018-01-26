@@ -77,7 +77,7 @@ classdef LSI_Control < mic.Base
         uiSLHexapod
         uiSLGoni
         uiSLReticle
-        
+        uiSLReticleFine
         
         % Coupled motion parameters
         uieRx
@@ -429,10 +429,17 @@ classdef LSI_Control < mic.Base
                 'hSetCallback', @this.setGoniRaw);
             this.uiSLReticle = mic.ui.common.PositionRecaller(...
                 'cConfigPath', fullfile(this.cAppPath, '+config'), ...
-                'cName', 'Reticle', ...
-                'hGetCallback', @this.getReticleRaw, ...
-                'hSetCallback', @this.setReticleRaw);
+                'cName', 'Reticle Coarse', ...
+                'hGetCallback', @this.getReticleCoarseRaw, ...
+                'hSetCallback', @this.setReticleCoarseRaw);
         
+            this.uiSLReticleFine = mic.ui.common.PositionRecaller(...
+                'cConfigPath', fullfile(this.cAppPath, '+config'), ...
+                'cName', 'Reticle Fine', ...
+                'hGetCallback', @this.getReticleFineRaw, ...
+                'hSetCallback', @this.setReticleFineRaw);
+            
+            
             this.uipbExposureProgress = mic.ui.common.ProgressBar(...
                 'dColorFill', [.4, .4, .8], ...
                 'dColorBg', [1, 1, 1], ...
@@ -1083,15 +1090,29 @@ classdef LSI_Control < mic.Base
 
         % -------------------------*****************----------------------
         % Need to implement these methods:
-        function positions = getReticleRaw(this)
-            for k = 1:length(this.uiDeviceArrayReticle)
+        function positions = getReticleCoarseRaw(this)
+            for k = 1:5
                 positions(k) = this.uiDeviceArrayReticle{k}.getDestRaw(); %#ok<AGROW>
             end
         end
         
-        function setReticleRaw(this, positions)
-            for k = 1:length(this.uiDeviceArrayReticle)
-                this.uiDeviceArrayReticle{k}.setAxesPosition(); %#ok<AGROW>
+        function setReticleCoarseRaw(this, positions)
+            for k = 1:5
+                this.uiDeviceArrayReticle{k}.setDestRaw(positions(k));
+                this.uiDeviceArrayReticle{k}.moveToDest();
+            end
+        end
+        
+        function positions = getReticleFineRaw(this)
+            for k = 6:7
+                positions(k) = this.uiDeviceArrayReticle{k}.getDestRaw(); %#ok<AGROW>
+            end
+        end
+        
+        function setReticleFineRaw(this, positions)
+            for k = 6:7
+                this.uiDeviceArrayReticle{k}.setDestRaw(positions(k));
+                this.uiDeviceArrayReticle{k}.moveToDest();
             end
         end
         % -------------------------*****************----------------------
@@ -1718,6 +1739,7 @@ classdef LSI_Control < mic.Base
             this.uiSLHexapod.build(this.hpPositionRecall, 10, 390, 340, 188);
 %             this.uiSLGoni.build(this.hpPositionRecall, 10, 200, 340, 188);
             this.uiSLReticle.build(this.hpPositionRecall, 10, 200, 340, 188);
+             this.uiSLReticleFine.build(this.hpPositionRecall, 10, 10, 340, 188);
             
             
             % Stage UI elements
@@ -1750,6 +1772,9 @@ classdef LSI_Control < mic.Base
             for k = 1:length(this.cReticleLabels)
                 this.uiDeviceArrayReticle{k}.build(this.hpStageControls, ...
                     dLeft, dAxisPos);
+                if (k == 5)
+                    dAxisPos = dAxisPos + this.dMultiAxisSeparation;
+                end
                 dAxisPos = dAxisPos + this.dMultiAxisSeparation;
             end
 
