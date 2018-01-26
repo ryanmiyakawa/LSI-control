@@ -149,7 +149,8 @@ classdef LSI_Control < mic.Base
         
         cHexapodAxisLabels = {'X', 'Y', 'Z', 'Rx', 'Ry', 'Rz'};
         cGoniLabels = {'Goni-Rx', 'Goni-Ry'};
-        cReticleLabels = {'Ret-Coarse-X', 'Ret-Coarse-Y', 'Ret-Rx', 'Ret-Ry', 'Ret-Coarse-Z', 'Ret-Fine-X', 'Ret-Fine-Y'};
+        cReticleLabels = {'Ret-C-X', 'Ret-C-Y', 'Ret-C-Z', 'Ret-C-Rx', 'Ret-C-Ry',...
+                         'Ret-F-X', 'Ret-F-Y'};
         
         ceScanAxisLabels = {'Hexapod X', ...
                         'Hexapod Y', ...
@@ -159,11 +160,13 @@ classdef LSI_Control < mic.Base
                         'Hexapod Rz', ...
                         'Goni X', ...
                         'Goni Y', ...
-                        'Reticle X', ...
-                        'Reticle Y', ...
-                        'Reticle Z', ...
-                        'Reticle Rx', ...
-                        'Reticle Ry'};
+                        'Ret Crs X', ...
+                        'Ret Crs Y', ...
+                        'Ret Crs Z', ...
+                        'Ret Rx', ...
+                        'Ret Ry', ...
+                        'Ret Fine X', ...
+                        'Ret Fine Y'};
         ceScanOutputLables = {'Image capture', 'Image intensity', 'Line Contrast', 'Line Pitch', 'Pause 2s'};
     end
     
@@ -963,6 +966,25 @@ classdef LSI_Control < mic.Base
             end
             
             % Add Reticle coordinates:
+            if isempty(this.apiReticle)
+                stLog.reticleCX = 'off';
+                stLog.reticleCY = 'off';
+                stLog.reticleCZ = 'off';
+                stLog.reticleRx = 'off';
+                stLog.reticleRy = 'off';
+                stLog.reticleFX = 'off';
+                stLog.reticleFY = 'off';
+            else 
+                dHexapodPositions = this.getHexapodRaw();
+                stLog.reticleCX = sprintf('%0.6f', dHexapodPositions(1));
+                stLog.reticleCY = sprintf('%0.6f', dHexapodPositions(2));
+                stLog.reticleCZ = sprintf('%0.6f', dHexapodPositions(3));
+                stLog.reticleRx = sprintf('%0.6f', dHexapodPositions(4));
+                stLog.reticleFX = sprintf('%0.6f', dHexapodPositions(5));
+                stLog.reticleFY = sprintf('%0.6f', dHexapodPositions(6));
+            end
+            
+            
             
             % Add temperature and exposure times:
             if isempty(this.apiCamera)
@@ -1203,7 +1225,7 @@ classdef LSI_Control < mic.Base
                         dUnit =  this.uiDeviceArrayGoni{dAxis}.getUnit().name;
                         dInitialState.values(k) = this.uiDeviceArrayGoni{dAxis - 6}.getDestCal(dUnit);
                         
-                    case {9, 10, 11, 12, 13} % Reticle
+                    case {9, 10, 11, 12, 13, 14, 15} % Reticle
                         if isempty(this.apiReticle)
 %                             msgbox('Reticle is not connected\n')
                             dInitialState.values(k) = 0;
@@ -1356,7 +1378,7 @@ classdef LSI_Control < mic.Base
                     case {7, 8} % Goni
                         this.uiDeviceArrayGoni{dAxis - 6}.setDestCal(dVal);
                         dPosHexRaw(dAxis - 6) = this.uiDeviceArrayHexapod{dAxis - 6}.getDestRaw();
-                    case {9, 10, 11, 12, 13} % Reticle
+                    case {9, 10, 11, 12, 13, 14, 15} % Reticle
                         this.uiDeviceArrayReticle{dAxis - 8}.setDestCal(dVal);
                         this.uiDeviceArrayHexapod{dAxis}.moveToDest();
                 end
@@ -1390,7 +1412,7 @@ classdef LSI_Control < mic.Base
                             isAtState = false;
                             return
                         end
-                    case {9, 10, 11, 12, 13} % Reticle
+                    case {9, 10, 11, 12, 13, 14, 15} % Reticle
                         retAxis = dAxis - 8;
                         if ~this.uiDeviceArrayReticle{retAxis}.getDevice().isReady()
                             isAtState = false;
