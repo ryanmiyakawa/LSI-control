@@ -764,6 +764,8 @@ classdef LSI_Control < mic.Base
                 if this.lSaveImagesInScan
                     this.saveImageInSeries();
                 else
+                    %Flag that we are finished acquiring now, because this
+                    %is otherwise done in "saveImageInSeries"
                     this.lIsScanAcquiring = false;
                 end
             end
@@ -1453,11 +1455,8 @@ classdef LSI_Control < mic.Base
             
             % Notify progress monitor
             this.updateScanProgress();
-            
-            % Use stateList.indices to populate the scan output
-            
-            % Each output should have a value to plot
-            dAcquiredValue = 1;
+                        
+
             
             % outputIdx: {'Image capture', 'Image intensity', 'Line Contrast', 'Line Pitch', 'Pause 2s'}
             switch outputIdx
@@ -1470,25 +1469,48 @@ classdef LSI_Control < mic.Base
                     
                 case 5 % pause
                     pause(2);
-                    dAcquiredValue = rand(1);
+                    
+                    % Flag that we are finished
                     this.lIsScanAcquiring = false;
             end
             
-            % Send plottable values to scanOutputHandler
-            this.handleUpdateScanOutput(u8Idx, stateList{u8Idx}, dAcquiredValue, cAxisNames)
+            
         end
         
-        function lVal = scanIsAcquired(this, stState, outputIdx)
+        function lAcquisitionFinished = scanIsAcquired(this, stState, outputIdx)
             % outputIdx: {'Image capture', 'Image intensity', 'Line Contrast', 'Line Pitch'}
+            
+            % Each output should have a value to plot
+            dAcquiredValue = 1;
+            
             switch outputIdx
                 case {1, 2, 3, 4} % Image caputre
                     % For getting image data, Scan is done acquiring when
                     % we set the lIsScanAcquiring boolean to false in
                     % 'onSaveImage'
                     
-                    lVal = ~this.lIsScanAcquiring;
+                    lAcquisitionFinished = ~this.lIsScanAcquiring;
                 case 5 % pause
-                    lVal = ~this.lIsScanAcquiring;
+                    dAcquiredValue = rand(1);
+                    lAcquisitionFinished = ~this.lIsScanAcquiring;
+            end
+            
+            % When scan is finished, process results:
+            if lAcquisitionFinished
+                u8Idx = this.scanHandler.getCurrentStateIndex();
+                
+                
+                switch outputIdx
+                    case 2 % Grab camera image and integrate intensity:
+                        dImg = this.apiCamera.getImage();
+                        dAcquiredValue = sum(dImg(:));
+                    
+                    
+                end
+                
+                
+                % Send plottable values to scanOutputHandler
+                this.handleUpdateScanOutput(u8Idx, stState, dAcquiredValue)
             end
             
         end
@@ -1557,7 +1579,7 @@ classdef LSI_Control < mic.Base
             
         end
         
-        function handleUpdateScanOutput(this, u8Idx, stStateElement, dAcquiredValue, cAxisNames)
+        function handleUpdateScanOutput(this, u8Idx, stStateElement, dAcquiredValue)
             % Log linear value:
             this.dLinearScanOutput(u8Idx) = dAcquiredValue;
             
