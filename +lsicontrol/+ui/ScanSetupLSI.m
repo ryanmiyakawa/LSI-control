@@ -178,7 +178,6 @@ classdef ScanSetupLSI < mic.ui.common.ScanSetup
             dLeft = 10;
             dPad = 6;
             dY = 45;
-            dScanButHeight = 70;
             dTop = 2;
             
             for k = 1:this.dScanAxes
@@ -187,7 +186,7 @@ classdef ScanSetupLSI < mic.ui.common.ScanSetup
                 if mod(k,2) == 1 && this.dScanAxes > 2
                     dTop = dTop + dPad + dY*.75;
                 else
-                    dTop = dTop + dPad + dY*1.25;
+                    dTop = dTop + dPad + dY*1.05;
                 end
             end
             
@@ -195,9 +194,9 @@ classdef ScanSetupLSI < mic.ui.common.ScanSetup
              
             % Build only if there is more than one axis
  
-            this.uibStartScan.build(this.hPanel, 140, dTop, 45, 30);
-            this.uipOutput.build(this.hPanel, 10, dTop - 10, 120, 40);
-            this.uibStopScan.build(this.hPanel, 195, dTop, 45, 30);
+            this.uibStartScan.build(this.hPanel, 140, dTop - 10, 45, 30);
+            this.uipOutput.build(this.hPanel, 10, dTop - 20, 120, 40);
+            this.uibStopScan.build(this.hPanel, 195, dTop - 10, 45, 30);
             
             
             this.uiSLScanSetup.build(this.hPanel, 487, 10, 340, dHeight - 20);

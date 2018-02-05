@@ -1722,7 +1722,7 @@ classdef LSI_Control < mic.Base
                 'FontWeight', 'Bold',...
                 'Clipping', 'on',...
                 'BorderWidth',0, ... 
-                'Position', [10 370 490 600] ...
+                'Position', [10 300 490 670] ...
             );
         
             % Scan control panel:
@@ -1733,20 +1733,20 @@ classdef LSI_Control < mic.Base
                 'FontWeight', 'Bold',...
                 'Clipping', 'on',...
                 'BorderWidth',0, ... 
-                'Position', [510 370 360 600] ...
+                'Position', [510 300 360 670] ...
                 );
         
 
         
             % Scan controls:
-            this.uitgScan.build(this.hFigure, 10, 10, 860, 345);
+            this.uitgScan.build(this.hFigure, 10, 10, 860, 280);
 
              % Scans:
-            this.ss1D.build(this.uitgScan.getTabByIndex(1), 10, 10, 850, 270); 
-            this.ss2D.build(this.uitgScan.getTabByIndex(2), 10, 10, 850, 270);
-            this.ss3D.build(this.uitgScan.getTabByIndex(3), 10, 10, 850, 270);
-            this.ssExp1.build(this.uitgScan.getTabByIndex(4), 10, 10, 850, 270);
-            this.ssExp2.build(this.uitgScan.getTabByIndex(5), 10, 10, 850, 270);
+            this.ss1D.build(this.uitgScan.getTabByIndex(1), 10, 10, 850, 230); 
+            this.ss2D.build(this.uitgScan.getTabByIndex(2), 10, 10, 850, 230);
+            this.ss3D.build(this.uitgScan.getTabByIndex(3), 10, 10, 850, 230);
+            this.ssExp1.build(this.uitgScan.getTabByIndex(4), 10, 10, 850, 230);
+            this.ssExp2.build(this.uitgScan.getTabByIndex(5), 10, 10, 850, 230);
             
             % Scan progress text elements:
             uitScanMonitor = this.uitgAxes.getTabByName('Scan monitor');
@@ -1797,17 +1797,17 @@ classdef LSI_Control < mic.Base
 %                     dLeft, dAxisPos);
 %                 dAxisPos = dAxisPos + this.dMultiAxisSeparation;
 %             end
-            dAxisPos = dAxisPos + 20;
             this.uiCommDeltaTauPowerPmac.build(this.hpStageControls,  dLeft, dAxisPos - 7);
             dAxisPos = dAxisPos + 20;
             for k = 1:length(this.cReticleLabels)
                 this.uiDeviceArrayReticle{k}.build(this.hpStageControls, ...
                     dLeft, dAxisPos);
                 if (k == 5)
-                    dAxisPos = dAxisPos + this.dMultiAxisSeparation;
+                    dAxisPos = dAxisPos + this.dMultiAxisSeparation/2;
                 end
                 dAxisPos = dAxisPos + this.dMultiAxisSeparation;
             end
+            
 
 
             
