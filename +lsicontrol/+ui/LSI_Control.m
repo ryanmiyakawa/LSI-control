@@ -1403,7 +1403,7 @@ classdef LSI_Control < mic.Base
                         dPosHexRaw(dAxis - 6) = this.uiDeviceArrayHexapod{dAxis - 6}.getDestRaw();
                     case {9, 10, 11, 12, 13, 14, 15} % Reticle
                         this.uiDeviceArrayReticle{dAxis - 8}.setDestCal(dVal);
-                        this.uiDeviceArrayHexapod{dAxis}.moveToDest();
+                        this.uiDeviceArrayReticle{dAxis - 8}.moveToDest();
                 end
             end
             
