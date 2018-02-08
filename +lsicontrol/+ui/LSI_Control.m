@@ -45,14 +45,12 @@ classdef LSI_Control < mic.Base
         uibHomeGoni
         
         % APIs:
-        apiHexapod
-        apiGoni
-        apiReticle
-        apiCamera
-        apiMFDriftMonitor
-        getMFDriftMonitorVirtual
-        apiWaferDoseMonitor
-        apiWaferDoseMonitorVirtual
+        apiHexapod          = []
+        apiGoni             = []
+        apiReticle          = []
+        apiCamera           = []
+        apiMFDriftMonitor   = []
+        apiWaferDoseMonitor = []
         
         % DMI and dose monitor:
         ceDMIChannelNames = {'DMI-Ret-X', 'DMI-Ret-Y'}
@@ -425,7 +423,7 @@ classdef LSI_Control < mic.Base
                     'dWidthUnit', dWidthUnit, ...
                     'dWidthVal', dWidthVal, ...
                     'dWidthPadUnit', dWidthPadUnit, ...
-                    'cName', this.ceDMIChannelNames{u8Channel}, ...
+                    'cName', sprintf('lsi-%s', this.ceDMIChannelNames{u8Channel}), ...
                     'config', uiConfig, ...
                     'cLabel', this.ceDMIChannelNames{u8Channel}, ...
                     'lUseFunctionCallbacks', true, ...
@@ -434,15 +432,18 @@ classdef LSI_Control < mic.Base
                     'lShowDevice', false, ...
                     'fhGet', @()this.apiMFDriftMonitor.getDMIValue(u8Channel),...
                     'fhIsReady', @()this.apiMFDriftMonitor.isReady(),...
-                    'fhIsVirtual', @()isempty(this.hardware.commMFDriftMonitor) ...
+                    'fhIsVirtual', @()isempty(this.apiMFDriftMonitor) ...
                     );
                 
                 
-                
+                  
                 
             
            end
             
+           
+           % adding some comments:
+           
            % Dose monitor:
            cPathConfig = fullfile(...
                bl12014.Utils.pathUiConfig(), ...
@@ -468,7 +469,7 @@ classdef LSI_Control < mic.Base
                'lShowDevice', false, ...
                'fhGet', @()this.apiWaferDoseMonitor.read(),...
                'fhIsReady', @()this.apiWaferDoseMonitor.isReady(),...
-               'fhIsVirtual',  @()isempty(this.hardware.commKeithley6482Wafer)...
+               'fhIsVirtual',  @()isempty(this.apiWaferDoseMonitor)...
             );
 
             % Init UI for camera control:
@@ -712,10 +713,12 @@ classdef LSI_Control < mic.Base
         
         function disconnectDriftMontior(this)
             this.hardware.deleteMFDriftMonitor();
+            this.apiMFDriftMonitor = [];
         end
         
         function disconnectDoseMonitor(this)
             this.hardware.deleteKeithleyWafer();
+            this.apiWaferDoseMonitor = [];
         end
         
         function initClock(this)
@@ -768,6 +771,8 @@ classdef LSI_Control < mic.Base
             % Delete the Stage API
             this.apiCamera = [];
         end
+        
+        
 
         % Builds hexapod java api, connecting getSetNumber UI elements
         % to the appropriate API hooks.  Device is already connected
@@ -1930,6 +1935,7 @@ classdef LSI_Control < mic.Base
 %                     dLeft, dAxisPos);
 %                 dAxisPos = dAxisPos + this.dMultiAxisSeparation;
 %             end
+
             this.uiCommDeltaTauPowerPmac.build(this.hpStageControls,  dLeft, dAxisPos - 7);
             dAxisPos = dAxisPos + 20;
             for k = 1:length(this.cReticleLabels)
@@ -1942,13 +1948,14 @@ classdef LSI_Control < mic.Base
             end
             dAxisPos = dAxisPos + 15;
             % DMI/Wafer diode connect buttons and GetNumbers
-            this.uicommMFDriftMonitor.build(this.hpStageControls,  dLeft, dAxisPos - 7);
+            this.uicommWaferDoseMonitor.build(this.hpStageControls,  dLeft, dAxisPos - 7);
             dAxisPos = dAxisPos + 20;
             this.uiDoseMonitor.build(this.hpStageControls, dLeft, dAxisPos);
             dAxisPos = dAxisPos +  this.dMultiAxisSeparation;
             dAxisPos = dAxisPos +  this.dMultiAxisSeparation;
             
-            this.uicommWaferDoseMonitor.build(this.hpStageControls,  dLeft, dAxisPos - 7);
+            
+            this.uicommMFDriftMonitor.build(this.hpStageControls,  dLeft, dAxisPos - 7);
             dAxisPos = dAxisPos + 25;
             this.uiDMIChannels{1}.build(this.hpStageControls, dLeft, dAxisPos);
             this.uiDMIChannels{2}.build(this.hpStageControls, dLeft + 230, dAxisPos);
