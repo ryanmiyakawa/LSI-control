@@ -768,6 +768,8 @@ classdef LSI_Control < mic.Base
             % Delete the Stage API
             this.apiCamera = [];
         end
+        
+        
 
         % Builds hexapod java api, connecting getSetNumber UI elements
         % to the appropriate API hooks.  Device is already connected
