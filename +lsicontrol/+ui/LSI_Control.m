@@ -176,7 +176,7 @@ classdef LSI_Control < mic.Base
                         'Ret Ry', ...
                         'Ret Fine X', ...
                         'Ret Fine Y'};
-        ceScanOutputLabels = {'Image capture', 'Image intensity', 'Line Contrast', 'Line Pitch', 'Pause 2s'};
+        ceScanOutputLabels = {'Image capture', 'Image intensity', 'Line Contrast', 'Line Pitch', 'Pause 2s', 'Wafer Diode'};
     end
     
     properties (Access = private)
@@ -1631,6 +1631,11 @@ classdef LSI_Control < mic.Base
                 case 5 % pause
                     dAcquiredValue = rand(1);
                     lAcquisitionFinished = ~this.lIsScanAcquiring;
+                case 6 % wafer dose diode
+                    
+                    dAcquiredValue = this.apiWaferDoseMonitor.read();
+                    lAcquisitionFinished = ~this.lIsScanAcquiring;
+                    
             end
             
             % When scan is finished, process results:
