@@ -193,6 +193,11 @@ classdef APIPVCam < mic.Base
             this.hDevice.stopCapture();
             
             this.dCurrentImage = reshape(dImg, 1340/this.dBinning, 1300/this.dBinning);
+            [sr, sc] = size(this.dCurrentImage);
+            this.dCurrentImage = crop2(this.dCurrentImage, ...
+                min([sr, sc]), min([sr, sc]));
+            
+            
             this.lIsImageReady = true;
             this.lIsAcquiring = false;
             this.fhOnImageReady(this.dCurrentImage);
@@ -249,6 +254,9 @@ classdef APIPVCam < mic.Base
             this.hDevice.stopCapture();
             
             this.dCurrentImage = reshape(dImg, 1340/this.dBinning, 1300/this.dBinning);
+            [sr, sc] = size(this.dCurrentImage);
+            this.dCurrentImage = crop2(this.dCurrentImage, ...
+                min([sr, sc]), min([sr, sc]));
             this.lIsImageReady = true;
             this.lIsAcquiring = false;
             this.fhOnImageReady(this.dCurrentImage);

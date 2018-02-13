@@ -64,6 +64,7 @@ classdef LSI_Control < mic.Base
         
         uiButtonAcquire
         uiButtonFocus
+        uiButtonStop
         uiButtonSaveImage
         uipBinning
         
@@ -153,6 +154,10 @@ classdef LSI_Control < mic.Base
     properties (Constant)
         dWidth  = 1750;
         dHeight =  1000;
+        
+        % Camera modes
+        U8CAMERA_MODE_ACQUIRE = 0
+        U8CAMERA_MODE_FOCUS = 1
         
         dMultiAxisSeparation = 30;
         
@@ -497,12 +502,17 @@ classdef LSI_Control < mic.Base
         
             this.uiButtonAcquire = mic.ui.common.Button(...
                 'cText', 'Acquire', ...
-                'fhDirectCallback', @this.onAcquire ...
+                'fhDirectCallback', @(~, ~) this.onStartCamera(this.U8CAMERA_MODE_ACQUIRE) ...
             );
             
             this.uiButtonFocus = mic.ui.common.Button(...
-                'cText', 'Focus', ...
-                'fhDirectCallback', @this.onFocus ...
+                'cText', 'Acquire', ...
+                'fhDirectCallback', @(~, ~) this.onStartCamera(this.U8CAMERA_MODE_FOCUS) ...
+            );
+        
+            this.uiButtonStop = mic.ui.common.Button(...
+                'cText', 'Acquire', ...
+                'fhDirectCallback', @this.onStopCamera ...
             );
         
             this.uipBinning = mic.ui.common.Popup(...
@@ -939,67 +949,59 @@ classdef LSI_Control < mic.Base
             this.uipbExposureProgress.set(dProgress);
         end
         
-        % Callback for the acquire button
-        function onAcquire(this, ~, ~)
+        
+        function onStartCamera(this, u8mode)
             if isempty(this.apiCamera)
                 msgbox('No camera connected!');
                 return
             end
             
-            % Call acquire, unless already acquiring, then call abort:
-            if ~this.apiCamera.lIsAcquiring
-            
-                this.uiButtonAcquire.setText('STOP')
-                this.uiButtonAcquire.setColor(this.dDisableColor);
-                this.uiButtonFocus.setText('...')
-                this.uiButtonFocus.setColor(this.dInactiveColor);
-
-                this.uipbExposureProgress.set(0);
-                this.uipbExposureProgress.setColor([.4, .4, .8]);
-
-                this.apiCamera.requestAcquisition();
-            else % abort acquisition:
-                
-                this.apiCamera.abortAcquisition();
-                this.uiButtonAcquire.setText('Acquire');
-                this.uiButtonAcquire.setColor(this.dAcquireColor);
-                this.uiButtonFocus.setText('Focus');
-                this.uiButtonFocus.setColor(this.dFocusColor);
-
-                this.uipbExposureProgress.set(0);
-            end
-        end
-        
-        % Callback for the focus button
-        function onFocus(this, ~, ~)
-             if isempty(this.apiCamera)
-                msgbox('No camera connected!');
+            % If already acquiring, then do nothing
+            if this.apiCamera.lIsAcquiring
                 return
             end
             
-            % Call acquire, unless already acquiring, then call abort:
-            if ~this.apiCamera.lIsAcquiring
-         
-                this.uiButtonFocus.setText('STOP')
-                this.uiButtonFocus.setColor(this.dDisableColor);
-                this.uiButtonAcquire.setText('...')
-                this.uiButtonAcquire.setColor(this.dInactiveColor);
-
-                this.uipbExposureProgress.set(0);
-                this.uipbExposureProgress.setColor([.9, .74, .9]);
-
-                this.apiCamera.startFocus();
-            else % abort acquisition:
-                
-                this.apiCamera.stopFocus();
-                this.uiButtonFocus.setText('Focus');
-                this.uiButtonFocus.setColor(this.dAcquireColor);
-                this.uiButtonAcquire.setText('Acquire');
-                this.uiButtonAcquire.setColor(this.dFocusColor);
-
-                this.uipbExposureProgress.set(0);
-               
+            this.uiButtonAcquire.setText('...')
+            this.uiButtonAcquire.setColor(this.dInactiveColor);
+            this.uiButtonFocus.setText('...')
+            this.uiButtonFocus.setColor(this.dInactiveColor);
+            this.uiButtonStop.setColor(this.dDisableColor);
+            this.uipbExposureProgress.set(0);
+            
+            
+            switch u8mode
+                case this.U8CAMERA_MODE_ACQUIRE
+                    this.uipbExposureProgress.setColor([.4, .4, .8]);
+                    this.apiCamera.requestAcquisition();
+                    
+                case this.U8CAMERA_MODE_FOCUS
+                    this.uipbExposureProgress.setColor([.9, .74, .9]);
+                    this.apiCamera.startFocus();
+                    
             end
+        end
+        
+        % Call this to abort acquisition or focus gracefully.
+        function onStopCamera(this)
+            
+            % Abort acquisition:
+            if this.apiCamera.lIsFocusing
+                this.apiCamera.stopFocus();
+            else
+                this.apiCamera.abortAcquisition();
+            end
+            
+            this.apiCamera.stopFocus();
+            this.uiButtonFocus.setText('Focus');
+            this.uiButtonFocus.setColor(this.dAcquireColor);
+            this.uiButtonAcquire.setText('Acquire');
+            this.uiButtonAcquire.setColor(this.dFocusColor);
+            this.uiButtonStop.setColor(this.dInactiveColor);
+            
+            this.uipbExposureProgress.set(0);
+            
+            
+            
         end
         
         
@@ -1996,9 +1998,10 @@ classdef LSI_Control < mic.Base
             
             this.uiCommPIMTECamera.build    (this.hpCameraControls, 10,  15);
             
-            this.uipBinning.build           (this.hpCameraControls, 580, 40, 70, 30);
-            this.uiButtonFocus.build        (this.hpCameraControls, 680, 50, 80,  30);
-            this.uiButtonAcquire.build      (this.hpCameraControls, 770, 50, 80,  30);
+            this.uipBinning.build           (this.hpCameraControls, 545, 40, 70, 30);
+            this.uiButtonFocus.build        (this.hpCameraControls, 630, 50, 60,  30);
+            this.uiButtonAcquire.build      (this.hpCameraControls, 710, 50, 60,  30);
+            this.uiButtonStop.build         (this.hpCameraControls, 790, 50, 60,  30);
             
             this.uieImageName.build         (this.hpCameraControls, 180 + 370, 95, 200, 25);
             this.uiButtonSaveImage.build    (this.hpCameraControls, 400 + 370, 110, 80, 20);
@@ -2013,7 +2016,8 @@ classdef LSI_Control < mic.Base
             this.uiButtonAcquire.setColor(this.dAcquireColor);
             this.uiButtonFocus.setText('Focus')
             this.uiButtonFocus.setColor(this.dFocusColor);
-            
+            this.uiButtonStop.setText('STOP');
+            this.uiButtonStop.setColor(this.dInactiveColor);
             
         end
         
