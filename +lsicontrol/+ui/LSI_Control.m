@@ -299,7 +299,8 @@ classdef LSI_Control < mic.Base
                                     @this.connectDoseMonitor, ...
                                     @this.disconnectDoseMonitor...
                                 ),...
-                'fhIsInitialized', @()true... % <-- CA says this is how you use this
+                'fhIsInitialized', @()true,... % <-- CA says this is how you use this
+                'fhIsVirtual', @false ... % Never virtualize the connection to real hardware
                 );
 
             this.uicommMFDriftMonitor = mic.ui.device.GetSetLogical(...
@@ -317,7 +318,7 @@ classdef LSI_Control < mic.Base
                                     @this.disconnectDriftMontior...
                                 ),...
                 'fhIsInitialized', @()true,...
-                'fhIsVirtual', @false ...
+                'fhIsVirtual', @false ...% Never virtualize the connection to real hardware
                 );
         end
         
@@ -471,6 +472,7 @@ classdef LSI_Control < mic.Base
                'fhIsReady', @()this.apiWaferDoseMonitor.isReady(),...
                'fhIsVirtual',  @()isempty(this.apiWaferDoseMonitor)...
             );
+            this.uiDoseMonitor.setUnit('nA');
 
             % Init UI for camera control:
             this.uiDeviceCameraTemperature = mic.ui.device.GetSetNumber( ...
@@ -1387,14 +1389,14 @@ classdef LSI_Control < mic.Base
                         dInitialState.values(k) = this.uiDeviceArrayGoni{dAxis - 6}.getDestCal(dUnit);
                         
                     case {9, 10, 11, 12, 13, 14, 15} % Reticle
-                        if isempty(this.apiReticle)
+%                         if isempty(this.apiReticle)
 %                             msgbox('Reticle is not connected\n')
-                            dInitialState.values(k) = 0;
-                            continue
+%                             dInitialState.values(k) = 0;
+%                             continue
 %                             return
-                        end
+%                         end
                         
-                        dUnit =  this.uiDeviceArrayReticle{dAxis}.getUnit().name;
+                        dUnit =  this.uiDeviceArrayReticle{dAxis - 8}.getUnit().name;
                         dInitialState.values(k) = this.uiDeviceArrayReticle{dAxis - 8}.getDestCal(dUnit);
                         
                 end
@@ -1575,7 +1577,17 @@ classdef LSI_Control < mic.Base
                         end
                     case {9, 10, 11, 12, 13, 14, 15} % Reticle
                         retAxis = dAxis - 8;
-                        if ~this.uiDeviceArrayReticle{retAxis}.getDevice().isReady()
+                        
+                        dUnit =  this.uiDeviceArrayReticle{dAxis - 8}.getUnit().name;
+                        dCommandedDest = this.uiDeviceArrayReticle{dAxis - 8}.getDestCal(dUnit);
+                        dAxisPosition = this.uiDeviceArrayReticle{dAxis - 8}.getValCal(dUnit);
+                        dEps = abs(dCommandedDest - dAxisPosition);
+                        fprintf('Commanded destination: %0.3f, Actual pos: %0.3f, eps: %0.4f\n', ...
+                            dCommandedDest, dAxisPosition, dEps);
+                        dTolerance = 0.001; % scan unit assumed to be mm here
+                        if ~this.uiDeviceArrayReticle{retAxis}.getDevice().isReady() || ...
+                                dEps > dTolerance
+                            
                             isAtState = false;
                             return
                         end
@@ -1717,11 +1729,11 @@ classdef LSI_Control < mic.Base
             % make scan output for 1 or 2 axis cases
             switch length(u8ScanAxisIdx)
                 case 1
-                    this.dScanOutput = zeros(1, length(this.ceScanCoordinates{1}));
+                    this.dScanOutput = nan(1, length(this.ceScanCoordinates{1}));
                 case 2
                     dXidx = this.ceScanCoordinates{1};
                     dYidx = this.ceScanCoordinates{2};
-                    this.dScanOutput = zeros(length(dYidx), length(dXidx));
+                    this.dScanOutput = nan(length(dYidx), length(dXidx));
                 case 3
                     dXidx = this.ceScanCoordinates{1};
                     dYidx = this.ceScanCoordinates{2};
@@ -1750,6 +1762,8 @@ classdef LSI_Control < mic.Base
                     
                     imagesc(this.haScanOutput, this.ceScanCoordinates{1}, this.ceScanCoordinates{2}, (this.dScanOutput));
                     this.haScanOutput.YDir = 'normal';
+                    
+                    colorbar(this.haScanOutput);
                 case 3
                     dXidx = find(this.ceScanCoordinates{1} == stStateElement.values(1));
                     dYidx = find(this.ceScanCoordinates{2} == stStateElement.values(2));
