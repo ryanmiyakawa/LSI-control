@@ -913,11 +913,10 @@ classdef LSI_Control < mic.Base
             if (this.lIsScanning)
                 if this.lSaveImagesInScan
                     this.saveImageInSeries();
-                else
-                    %Flag that we are finished acquiring now, because this
-                    %is otherwise done in "saveImageInSeries"
-                    this.lIsScanAcquiring = false;
                 end
+                
+                % Either way, notify that we are done acquiring:
+                 this.lIsScanAcquiring = false;
             end
             
             
@@ -925,6 +924,7 @@ classdef LSI_Control < mic.Base
             this.uiButtonAcquire.setColor(this.dAcquireColor);
             this.uiButtonFocus.setText('Focus');
             this.uiButtonFocus.setColor(this.dFocusColor);
+            this.uiButtonStop.setColor(this.dInactiveColor);
             
             this.uipbExposureProgress.set(1);
             this.uipbExposureProgress.setColor([.2, .8, .2]);
@@ -950,14 +950,16 @@ classdef LSI_Control < mic.Base
         end
         
         
+        % Called to begin an acquisition or a focus start.  
         function onStartCamera(this, u8mode)
             if isempty(this.apiCamera)
                 msgbox('No camera connected!');
                 return
             end
             
-            % If already acquiring, then do nothing
-            if this.apiCamera.lIsAcquiring
+            % If already busy, then do nothing
+            if this.apiCamera.lIsAcquiring || this.apiCamera.lIsFocusing
+                fprintf('(LSI-control) Not starting acquire because camera is already busy');
                 return
             end
             
@@ -984,6 +986,11 @@ classdef LSI_Control < mic.Base
         % Call this to abort acquisition or focus gracefully.
         function onStopCamera(this)
             
+            % Check if there's anything to stop:
+            if (~this.apiCamera.lIsFocusing) && (~this.apiCamera.lIsAcquiring)
+                fprintf('(LSI-control) Nothing to stop because camera is idle');
+                return
+            end
             % Abort acquisition:
             if this.apiCamera.lIsFocusing
                 this.apiCamera.stopFocus();
@@ -1018,7 +1025,6 @@ classdef LSI_Control < mic.Base
                 mkdir(seriesPath);
             end
             
-            
             thisSeriesPath = fullfile(seriesPath, sprintf('series_%0.3d', this.dImageSeriesNumber));
             if exist(thisSeriesPath, 'dir') ~= 7
                 mkdir(thisSeriesPath);
@@ -1027,11 +1033,6 @@ classdef LSI_Control < mic.Base
             cFileName = sprintf('%s-%0.3d-%0.3d', datestr(now,'yyyymmdd'), this.dImageSeriesNumber, dIdx);
                         
             this.saveAndLogImage(thisSeriesPath, seriesPath, cFileName, dImg);
-            
-            % If we're "scan acquiring", flag that we are now finished
-            if (this.lIsScanAcquiring)
-                this.lIsScanAcquiring = false;
-            end
         end
             
             

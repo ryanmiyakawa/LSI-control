@@ -14,19 +14,23 @@ classdef APIPVCam < mic.Base
         dTemperature = 25 % also log this since we don't have access to it during an exposure
         dBinning = 1
         
-        lIsAcquiring = false
+        
         
         fhOnImageReady % Function to call when image is finished
         fhWhileAcquiring = @(elapsedTime)[]% Function to call on trigger
         
-        lIsImageReady
+        
         
         nPixelsX = 1340
         nPixelsY = 1300
         
         dCurrentImage = []
         
-        lIsFocusing = false
+        % Flags for keeping track of image status
+        lIsFocusing     = false
+        lIsAcquiring    = false
+        lIsImageReady   = false
+        
         
         dasAcquisition % deferred actions scheduler for acquire
         
@@ -180,12 +184,14 @@ classdef APIPVCam < mic.Base
             this.dasAcquisition.abort();
             this.lIsAcquiring = false;
             
+            fprintf('(APIPVCam) Aborting camera acquisition\n');
+            
             % Tell camera to abort:
             this.hDevice.stopCapture();
         end
         
         function acquisitionHandler(this)
-            fprintf('APICamera:Acquisition came back\n');
+            
             
             dImg = typecast((this.hDevice.getImage()), 'uint16');
             
@@ -197,6 +203,7 @@ classdef APIPVCam < mic.Base
             this.dCurrentImage = crop2(this.dCurrentImage, ...
                 min([sr, sc]), min([sr, sc]));
             
+            fprintf('APICamera:Acquisition came back. Image is [%d X %d]\n', min([sr, sc]), min([sr, sc]));
             
             this.lIsImageReady = true;
             this.lIsAcquiring = false;
