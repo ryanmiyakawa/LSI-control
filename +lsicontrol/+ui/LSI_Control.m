@@ -131,6 +131,9 @@ classdef LSI_Control < mic.Base
         uiTextTimeRemaining
         uiTextTimeComplete
         
+        % Keep track of initial state of last scan
+        stLastScanState
+        
         lAutoSaveImage
         lIsScanAcquiring = false % whether we're currently in a "scan acquire"
         lIsScanning = false
@@ -1414,6 +1417,8 @@ classdef LSI_Control < mic.Base
             end
                 
             dInitialState = this.getInitialState(u8ScanAxisIdx);
+            % Save this state:
+            this.stLastScanState = dInitialState;
 
             
             % If using deltas, modify state to center around current
@@ -1755,15 +1760,20 @@ classdef LSI_Control < mic.Base
                     dXidx = find(this.ceScanCoordinates{1} == stStateElement.values);
                     this.dScanOutput(dXidx) = dAcquiredValue; %#ok<FNDSB>
                     
-                    plot(this.haScanOutput, this.ceScanCoordinates{1}, this.dScanOutput);
+                    h = plot(this.haScanOutput, this.ceScanCoordinates{1}, this.dScanOutput);
+                    h.HitTest = 'off';
+                    this.haScanOutput.ButtonDownFcn = @(src, evt) this.handleScanOutputClick(evt, 1);
                     
                 case 2
                     dXidx = find(this.ceScanCoordinates{1} == stStateElement.values(1));
                     dYidx = find(this.ceScanCoordinates{2} == stStateElement.values(2));
                     this.dScanOutput(dYidx, dXidx) = dAcquiredValue; %#ok<FNDSB>
                     
-                    imagesc(this.haScanOutput, this.ceScanCoordinates{1}, this.ceScanCoordinates{2}, (this.dScanOutput));
+                    h = imagesc(this.haScanOutput, this.ceScanCoordinates{1}, this.ceScanCoordinates{2}, (this.dScanOutput));
                     this.haScanOutput.YDir = 'normal';
+                    h.HitTest = 'off';
+                    this.haScanOutput.ButtonDownFcn = @(src, evt) this.handleScanOutputClick(evt, 2);
+
                     
                     colorbar(this.haScanOutput);
                 case 3
@@ -1773,6 +1783,70 @@ classdef LSI_Control < mic.Base
                     this.dScanOutput(dXidx, dYidx, dZidx) = dAcquiredValue; %#ok<FNDSB>
                     
                     % don't do anything right now
+            end
+        end
+        
+        % Handles a click inside of the scan output axes
+        function handleScanOutputClick(this, evt, nDim)
+            % make a clone of last scan state but update the
+                        % current value:
+            stTargetState = this.stLastScanState;
+            if evt.Button > 1 % right click
+                switch nDim
+                    case 1
+                        fprintf('(LSI-control) Scan-output: click detected at x = %0.3f\n', ...
+                            evt.IntersectionPoint(1));
+                        
+                        
+                        stTargetState.values(1) = evt.IntersectionPoint(1);
+                        cMsg = sprintf('Move %s to %0.3f?', ...
+                                this.ceScanAxisLabels{stTargetState.axes(1)}, ...
+                                evt.IntersectionPoint(1));
+                            
+                        choice = questdlg(cMsg, 'Move axes', 'Yes','No', 'No');
+                        % Handle response
+                        switch choice
+                            case 'Yes'
+                                this.setScanAxisDevicesToState(stTargetState);
+                            case 'No'
+                                fprintf('scan axis move aborted\n');
+                        end
+                            
+                    case 2
+                        fprintf('(LSI-control) Scan-output: click detected at [x, y] = [%0.3f, %0.3f]\n', ...
+                            evt.IntersectionPoint(1), evt.IntersectionPoint(1));
+                        stTargetState.values(1) = evt.IntersectionPoint(1);
+                        stTargetState.values(2) = evt.IntersectionPoint(2);
+                        
+                        cMsg = sprintf('Move [%s, %s] to [%0.3f, %0.3f]?', ...
+                                this.ceScanAxisLabels{stTargetState.axes(1)}, ...
+                                this.ceScanAxisLabels{stTargetState.axes(2)}, ...
+                                evt.IntersectionPoint(1),evt.IntersectionPoint(2));
+                            
+                        choice = questdlg(cMsg, 'Move axes', 'Yes','No', 'No');
+                        % Handle response
+                        switch choice
+                            case 'Yes'
+                                this.setScanAxisDevicesToState(stTargetState);
+                            case 'No'
+                                fprintf('scan axis move aborted\n');
+                        end
+                end
+            else % button down was a left click, just display the event:
+                switch nDim
+                    case 1
+                        cMsg = sprintf('(LSI-control) Scan-output:Axis %s value: %0.3f?', ...
+                                this.ceScanAxisLabels{stTargetState.axes(1)}, ...
+                                evt.IntersectionPoint(1));
+                        
+                        
+                    case 2
+                        cMsg = sprintf('(LSI-control) Scan-output:Axes [%s, %s] values: [%0.3f, %0.3f]?', ...
+                                this.ceScanAxisLabels{stTargetState.axes(1)}, ...
+                                this.ceScanAxisLabels{stTargetState.axes(2)}, ...
+                                evt.IntersectionPoint(1),evt.IntersectionPoint(2));
+                end
+                fprintf(cMsg);
             end
         end
         
