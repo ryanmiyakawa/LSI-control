@@ -1600,6 +1600,16 @@ classdef LSI_Control < mic.Base
                     case {9, 10, 11, 12, 13, 14, 15} % Reticle
                         retAxis = dAxis - 8;
                         
+                        if this.uiDeviceArrayReticle{retAxis}.getDevice().isReady()
+                            fprintf('(LSI-control) scan: Reticle axis is ready\n');
+                            isAtState = true;
+                            return
+                        else
+                            isAtState = false;
+                            return
+                        end
+                        
+                        
                         dUnit =  this.uiDeviceArrayReticle{dAxis - 8}.getUnit().name;
                         dCommandedDest = this.uiDeviceArrayReticle{dAxis - 8}.getDestCal(dUnit);
                         dAxisPosition = this.uiDeviceArrayReticle{dAxis - 8}.getValCal(dUnit);
@@ -1610,6 +1620,7 @@ classdef LSI_Control < mic.Base
                         if ~this.uiDeviceArrayReticle{retAxis}.getDevice().isReady() || ...
                                 dEps > dTolerance
                             
+                            fprintf('Reticle is within tolerance\n');
                             isAtState = false;
                             return
                         end
@@ -1667,7 +1678,8 @@ classdef LSI_Control < mic.Base
                     lAcquisitionFinished = ~this.lIsScanAcquiring;
                 case 6 % wafer dose diode
                     
-                    dAcquiredValue = this.apiWaferDoseMonitor.read(2);
+%                     dAcquiredValue = this.apiWaferDoseMonitor.read(2);
+                    dAcquiredValue = this.uiDoseMonitor.getValRaw();
                     lAcquisitionFinished = ~this.lIsScanAcquiring;
                     
             end
