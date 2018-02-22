@@ -110,6 +110,29 @@ classdef LSI_Control < mic.Base
         
         haScanOutput
         
+        
+        % Fiducialization
+        uipAxisX
+        uipAxisY
+        
+        uieFidX1Measured
+        uieFidY1Measured
+        uieFidX2Measured
+        uieFidY2Measured
+        
+        uieFidX1Library
+        uieFidY1Library
+        uieFidX2Library
+        uieFidY2Library
+        
+        uieFidTargetX
+        uieFidTargetY
+        
+        uibFidGo
+        
+        uiprLibraryFiducials
+        uiprTargetCoordinates
+        
         % Scans:
         uitgScan
         ceTabList = {'1D-scan', '2D-scan', '3D-scan', 'LSI P/S', 'LSI P/S Cont. Correction'}
@@ -577,6 +600,59 @@ classdef LSI_Control < mic.Base
             
             
            
+            % Fiducialized moves:
+            
+            this.uipAxisX
+            this.uipAxisY
+            
+            this.uieFidX1Measured = mic.ui.common.Edit(...
+                'cLabel', 'Fiducial 1 Meas. X' ...
+            );
+            this.uieFidY1Measured = mic.ui.common.Edit(...
+                'cLabel', 'Fiducial 1 Meas. Y' ...
+            );
+            this.uieFidX2Measured = mic.ui.common.Edit(...
+                'cLabel', 'Fiducial 2 Meas. X' ...
+            );
+            this.uieFidY2Measured = mic.ui.common.Edit(...
+                'cLabel', 'Fiducial 2 Meas. Y' ...
+            );
+            
+            this.uieFidX1Library = mic.ui.common.Edit(...
+                'cLabel', 'Fiducial 1 Lib. X' ...
+            );
+            this.uieFidY1Library = mic.ui.common.Edit(...
+                'cLabel', 'Fiducial 1 Lib. Y' ...
+            );
+            this.uieFidX2Library = mic.ui.common.Edit(...
+                'cLabel', 'Fiducial 2 Lib. X' ...
+            );
+            this.uieFidY2Library = mic.ui.common.Edit(...
+                'cLabel', 'Fiducial 2 Lib. Y' ...
+            );
+            
+            this.uieFidTargetX = mic.ui.common.Edit(...
+                'cLabel', 'Library Target x' ...
+            );
+            this.uieFidTargetY = mic.ui.common.Edit(...
+                'cLabel', 'Library Target x' ...
+            );
+            
+            this.uibFidGo = mic.ui.common.Button(...
+                'cText', 'Make Fiducialized Move' , 'fhDirectCallback', @(src,evt)this.moveFiducialized ...
+            );
+            
+            this.uiprLibraryFiducials = mic.ui.common.PositionRecaller(...
+                'cConfigPath', fullfile(this.cAppPath, '+config'), ...
+                'cName', 'Fiducial coordinates', ...
+                'hGetCallback', @this.getLibraryFiducialCoords, ...
+                'hSetCallback', @this.setLibraryFiducialCoords);
+            
+            this.uiprTargetCoordinates = mic.ui.common.PositionRecaller(...
+                'cConfigPath', fullfile(this.cAppPath, '+config'), ...
+                'cName', 'Library moves', ...
+                'hGetCallback', @this.getLibraryTargetCoordinates, ...
+                'hSetCallback', @this.setLibraryTargetCoordinates);
             
             % Scans:
             this.ss1D = mic.ui.common.ScanSetup( ...
@@ -672,7 +748,8 @@ classdef LSI_Control < mic.Base
             this.uitgScan = mic.ui.common.Tabgroup('ceTabNames', this.ceTabList, ...
                                                     'fhDirectCallback', ceScanCallbackTriggers);
             % Axes tab group:
-            this.uitgAxes = mic.ui.common.Tabgroup('ceTabNames', {'Camera', 'Scan monitor', 'Scan output'});
+            this.uitgAxes = mic.ui.common.Tabgroup('ceTabNames', ...
+                {'Camera', 'Scan monitor', 'Scan output', 'Fiducialized moves'});
            
             
             % Scan progress text elements:
@@ -1248,8 +1325,24 @@ classdef LSI_Control < mic.Base
             this.apiCamera.setBinning(src.getSelectedValue);
         end
         
+ %% FIDUCIALIZED MOVES
+ 
  %% POSITION RECALL Stage direct access get/set
 
+        function positions = getLibraryFiducialCoords(this)
+            
+        end
+        function setLibraryFiducialCoords(this, positions)
+            
+        end
+        function positions = getLibraryTargetCoordinates(this)
+            
+        end
+        function setLibraryTargetCoordinates(this, positions)
+            
+        end
+        
+        
         % -------------------------*****************----------------------
         % Need to implement these methods:
         function positions = getReticleCoarseRaw(this)
@@ -1973,6 +2066,15 @@ classdef LSI_Control < mic.Base
            this.uitgAxes.build(this.hFigure, 880, 10, 860, 785);
            this.hsaAxes.build(this.uitgAxes.getTabByName('Camera'), this.hFigure, 10, 10, 810, 720);
             
+           
+           % Fiducialization
+           dLeft = 20;
+           dTop = 20;
+           uitFid = this.uitgAxes.getTabByName('Fiducialized moves');
+           
+           this.uieFidX1Measured.build(uitFid, dLeft, dTop, 20, 80);
+           this.uieFidY1Measured.build(uitFid, dLeft + 100, dTop, 20, 80);
+           
                 
             % Stage panel:
             this.hpStageControls = uipanel(...
