@@ -112,26 +112,35 @@ classdef LSI_Control < mic.Base
         
         
         % Fiducialization
-        uipAxisX
-        uipAxisY
+        uipFidAxisX
+        uipFidAxisY
         
         uieFidX1Measured
         uieFidY1Measured
         uieFidX2Measured
         uieFidY2Measured
+        uieFidX3Measured
+        uieFidY3Measured
+        
         
         uieFidX1Library
         uieFidY1Library
         uieFidX2Library
         uieFidY2Library
+        uieFidX3Library
+        uieFidY3Library
         
         uieFidTargetX
         uieFidTargetY
         
         uibFidGo
+        uibFidSet
         
         uiprLibraryFiducials
         uiprTargetCoordinates
+        
+        dFidRot = []
+        fhFidTransform = @(x) x
         
         % Scans:
         uitgScan
@@ -602,49 +611,77 @@ classdef LSI_Control < mic.Base
            
             % Fiducialized moves:
             
-            this.uipAxisX
-            this.uipAxisY
+            this.uipFidAxisX = mic.ui.common.Popup(...
+                'cLabel', 'Axis 1', ...
+                'ceOptions', this.ceScanAxisLabels, ...
+                'u8Selected', 9, ...
+                'lShowLabel', true ...
+            );
+            this.uipFidAxisY = mic.ui.common.Popup(...
+                'cLabel', 'Axis 2', ...
+                'ceOptions', this.ceScanAxisLabels, ...
+                'u8Selected', 10, ...
+                'lShowLabel', true ...
+            );
+        
+           
             
             this.uieFidX1Measured = mic.ui.common.Edit(...
-                'cLabel', 'Fiducial 1 Meas. X' ...
+                'cLabel', 'Fiducial 1 Meas. X', 'cType', 'd' ...
             );
             this.uieFidY1Measured = mic.ui.common.Edit(...
-                'cLabel', 'Fiducial 1 Meas. Y' ...
+                'cLabel', 'Fiducial 1 Meas. Y', 'cType', 'd' ...
             );
             this.uieFidX2Measured = mic.ui.common.Edit(...
-                'cLabel', 'Fiducial 2 Meas. X' ...
+                'cLabel', 'Fiducial 2 Meas. X', 'cType', 'd' ...
             );
             this.uieFidY2Measured = mic.ui.common.Edit(...
-                'cLabel', 'Fiducial 2 Meas. Y' ...
+                'cLabel', 'Fiducial 2 Meas. Y', 'cType', 'd' ...
+            );
+            this.uieFidX3Measured = mic.ui.common.Edit(...
+                'cLabel', 'Fiducial 3 Meas. X', 'cType', 'd' ...
+            );
+            this.uieFidY3Measured = mic.ui.common.Edit(...
+                'cLabel', 'Fiducial 3 Meas. Y', 'cType', 'd' ...
             );
             
             this.uieFidX1Library = mic.ui.common.Edit(...
-                'cLabel', 'Fiducial 1 Lib. X' ...
+                'cLabel', 'Fiducial 1 Lib. X', 'cType', 'd' ...
             );
             this.uieFidY1Library = mic.ui.common.Edit(...
-                'cLabel', 'Fiducial 1 Lib. Y' ...
+                'cLabel', 'Fiducial 1 Lib. Y', 'cType', 'd' ...
             );
             this.uieFidX2Library = mic.ui.common.Edit(...
-                'cLabel', 'Fiducial 2 Lib. X' ...
+                'cLabel', 'Fiducial 2 Lib. X', 'cType', 'd' ...
             );
             this.uieFidY2Library = mic.ui.common.Edit(...
-                'cLabel', 'Fiducial 2 Lib. Y' ...
+                'cLabel', 'Fiducial 2 Lib. Y', 'cType', 'd' ...
+            );
+            this.uieFidX3Library = mic.ui.common.Edit(...
+                'cLabel', 'Fiducial 3 Lib. X', 'cType', 'd' ...
+            );
+            this.uieFidY3Library = mic.ui.common.Edit(...
+                'cLabel', 'Fiducial 3 Lib. Y', 'cType', 'd' ...
             );
             
             this.uieFidTargetX = mic.ui.common.Edit(...
-                'cLabel', 'Library Target x' ...
+                'cLabel', 'Library Target X', 'cType', 'd' ...
             );
             this.uieFidTargetY = mic.ui.common.Edit(...
-                'cLabel', 'Library Target x' ...
+                'cLabel', 'Library Target Y', 'cType', 'd' ...
             );
             
             this.uibFidGo = mic.ui.common.Button(...
-                'cText', 'Make Fiducialized Move' , 'fhDirectCallback', @(src,evt)this.moveFiducialized ...
+                'cText', 'Make Library Move' , 'fhDirectCallback', @(src,evt)this.moveFiducialized ...
             );
+            this.uibFidSet = mic.ui.common.Button(...
+                'cText', 'Set Fiducials' , 'fhDirectCallback', @(src,evt)this.setFiducial ...
+            );
+        
             
             this.uiprLibraryFiducials = mic.ui.common.PositionRecaller(...
                 'cConfigPath', fullfile(this.cAppPath, '+config'), ...
-                'cName', 'Fiducial coordinates', ...
+                'cName', 'Fiducial coordinate systems', ...
                 'hGetCallback', @this.getLibraryFiducialCoords, ...
                 'hSetCallback', @this.setLibraryFiducialCoords);
             
@@ -1326,20 +1363,110 @@ classdef LSI_Control < mic.Base
         end
         
  %% FIDUCIALIZED MOVES
+
+        function setFiducial(this)
+            % Get displacement vectors:
+            dX1L = this.uieFidX1Library.get();
+            dY1L = this.uieFidY1Library.get();
+            dX2L = this.uieFidX2Library.get();
+            dY2L = this.uieFidY2Library.get();
+            dX3L = this.uieFidX3Library.get();
+            dY3L = this.uieFidY3Library.get();
+            dX1M = this.uieFidX1Measured.get();
+            dY1M = this.uieFidY1Measured.get();
+            dX2M = this.uieFidX2Measured.get();
+            dY2M = this.uieFidY2Measured.get();
+            dX3M = this.uieFidX3Measured.get();
+            dY3M = this.uieFidY3Measured.get();
+            
+            % Use point 1 as origin:
+            
+            % Measured basis vectors:
+            dBetaM1 = [dX2M - dX1M; dY2M - dY1M];
+            dBetaM2 = [dX3M - dX1M; dY3M - dY1M];
+            
+            % Library basis vectors:
+            dBetaL1 = [dX2L - dX1L; dY2L - dY1L];
+            dBetaL2 = [dX3L - dX1L; dY3L - dY1L];
+            
+            % Write L->M change of basis:
+            T = inv([dBetaM1, dBetaM2]); 
+            
+            % Write target vector in basis M then translate back to lab
+            % coords
+            this.fhFidTransform = @(X) (T*(X - [dX1L; dY1L]))' * [dBetaL1, dBetaL2] + [dX1M, dY1M];
+               
+            this.uibFidGo.setColor([0.8, 0.9, 0.8]);
+        end
+        
+        function moveFiducialized(this)
+            
+            dXLib = this.uieFidTargetX.get(); 
+            dYLib = this.uieFidTargetY.get();
+            
+            dTransformCoords = this.fhFidTransform([dXLib; dYLib]);
+            
+            % Generate state with these coords:
+            u8ScanAxisIdx = [(this.uipFidAxisX.getSelectedIndex()), ...
+                (this.uipFidAxisY.getSelectedIndex())];
+            
+            stTargetState = struct('axes', u8ScanAxisIdx, 'values', dTransformCoords');
+            this.setScanAxisDevicesToState(stTargetState);
+        end
+
  
  %% POSITION RECALL Stage direct access get/set
 
         function positions = getLibraryFiducialCoords(this)
-            
+            positions = [ ...
+                double(this.uipFidAxisX.getSelectedIndex()), ...
+                double(this.uipFidAxisY.getSelectedIndex()), ...
+                this.uieFidX1Measured.get(), ...
+                this.uieFidY1Measured.get(), ...
+                this.uieFidX2Measured.get(), ...
+                this.uieFidY2Measured.get(), ...
+                ...
+                this.uieFidX1Library.get(), ...
+                this.uieFidY1Library.get(), ...
+                this.uieFidX2Library.get(), ...
+                this.uieFidY2Library.get(), ...
+                ...
+                this.uieFidX3Library.get(), ...
+                this.uieFidY3Library.get(), ...
+                this.uieFidX3Measured.get(), ...
+                this.uieFidY3Measured.get() ...
+            ];
         end
         function setLibraryFiducialCoords(this, positions)
+            this.uipFidAxisX.setSelectedIndex(uint8(positions(1)));
+            this.uipFidAxisY.setSelectedIndex(uint8(positions(2)));
+            this.uieFidX1Measured.set(positions(3));
+            this.uieFidY1Measured.set(positions(4));
+            this.uieFidX2Measured.set(positions(5));
+            this.uieFidY2Measured.set(positions(6));
+            this.uieFidX1Library.set(positions(7));
+            this.uieFidY1Library.set(positions(8));
+            this.uieFidX2Library.set(positions(9));
+            this.uieFidY2Library.set(positions(10));
             
+            this.uieFidX3Library.set(positions(11));
+            this.uieFidY3Library.set(positions(12));
+            this.uieFidX3Measured.set(positions(13));
+            this.uieFidY3Measured.set(positions(14));
         end
+        
         function positions = getLibraryTargetCoordinates(this)
-            
+            positions = [ ...
+                this.uieFidTargetX.get(), ...
+                this.uieFidTargetY.get() ...
+            ];
         end
         function setLibraryTargetCoordinates(this, positions)
+            this.uieFidTargetX.set(positions(1));
+            this.uieFidTargetY.set(positions(2));
             
+            % Call make lib move button callback
+            this.moveFiducialized();
         end
         
         
@@ -2053,11 +2180,15 @@ classdef LSI_Control < mic.Base
                     'name', 'Interferometer control',...
                     'Units', 'pixels',...
                     'Position', [10 10 this.dWidth this.dHeight],...
-                    'handlevisibility','off',... %out of reach gcf
                     'numberTitle','off',...
                     'Toolbar','none',...
                     'Menubar','none', ...
-                    'Color', [0.7 0.73 0.73]);
+                    'Color', [0.7 0.73 0.73], ...
+                    'Resize', 'off',...
+                    'HandleVisibility', 'on',... % lets close all close the figure
+                    'Visible', 'on'...
+                   ...% 'CloseRequestFcn', @this.onCloseRequest ...
+                    );
                 
            % Axes:
            
@@ -2068,14 +2199,47 @@ classdef LSI_Control < mic.Base
             
            
            % Fiducialization
-           dLeft = 20;
-           dTop = 20;
+           drawnow
+           dLeft1 = 20;
+           dLeft2 = 270;
+           dLeft3 = 505;
+           dTop = 30;
            uitFid = this.uitgAxes.getTabByName('Fiducialized moves');
            
-           this.uieFidX1Measured.build(uitFid, dLeft, dTop, 20, 80);
-           this.uieFidY1Measured.build(uitFid, dLeft + 100, dTop, 20, 80);
+           this.uipFidAxisX.build(uitFid, dLeft1, dTop, 120, 20);
+           this.uipFidAxisY.build(uitFid, dLeft2, dTop, 120, 20);
+           this.uiprLibraryFiducials.build(uitFid, dLeft3, 500, 340, 200);
            
-                
+           dTop = dTop + 60;
+           this.uieFidX1Library.build(uitFid, dLeft1, dTop, 100, 20);
+           this.uieFidY1Library.build(uitFid, dLeft1 + 110, dTop, 100, 20);
+           this.uieFidX2Library.build(uitFid, dLeft2, dTop, 100, 20);
+           this.uieFidY2Library.build(uitFid, dLeft2 + 110, dTop, 100, 20);
+           
+           dTop = dTop + 40;
+           this.uieFidX1Measured.build(uitFid, dLeft1, dTop, 100, 20);
+           this.uieFidY1Measured.build(uitFid, dLeft1 + 110, dTop, 100, 20);
+           this.uieFidX2Measured.build(uitFid, dLeft2, dTop, 100, 20);
+           this.uieFidY2Measured.build(uitFid, dLeft2 + 110, dTop, 100, 20);
+           
+            dTop = dTop + 60;
+           this.uieFidX3Library.build(uitFid, dLeft1, dTop, 100, 20);
+           this.uieFidY3Library.build(uitFid, dLeft1 + 110, dTop, 100, 20);
+           
+           dTop = dTop + 40;
+           this.uieFidX3Measured.build(uitFid, dLeft1, dTop, 100, 20);
+           this.uieFidY3Measured.build(uitFid, dLeft1 + 110, dTop, 100, 20);
+           
+           this.uibFidSet.build(uitFid, dLeft2 + 20, dTop - 13, 150, 30);
+           
+           dLeft1 = dLeft1 + 55;
+           dTop = dTop + 260;
+           this.uieFidTargetX.build(uitFid, dLeft1, dTop, 100, 20);
+           this.uieFidTargetY.build(uitFid, dLeft1 + 110, dTop, 100, 20);
+           this.uibFidGo.build(uitFid, dLeft1 + 230, dTop + 8, 120, 30);
+           this.uibFidGo.setColor([0.9, 0.8, 0.8]);
+           this.uiprTargetCoordinates.build(uitFid, dLeft3, 185, 340, 200);
+           
             % Stage panel:
             this.hpStageControls = uipanel(...
                 'Parent', this.hFigure,...
@@ -2098,7 +2262,7 @@ classdef LSI_Control < mic.Base
                 'Position', [510 300 360 670] ...
                 );
         
-
+            drawnow
         
             % Scan controls:
             this.uitgScan.build(this.hFigure, 10, 10, 860, 280);
@@ -2239,65 +2403,18 @@ classdef LSI_Control < mic.Base
         
 
         
-        
-        function delete(this)
-            this.saveStateToDisk();
-
-            this.deleteUi();
-        end
-        
-        function deleteUi(this)
-            % Stop the clock:
-            this.clock.stop();
-                        
-            for k = 1:length(this.cHexapodAxisLabels)
-                delete(this.uiDeviceArrayHexapod{k});
-            end
-            
-            delete(this.uiDeviceMode);
-            delete(this.uiDeviceAwesome);
-            delete(this.uiButtonUseDeviceData);
-            delete(this.uiToggleAll);
-            delete(this.clock);
-            
-        end
-        
-        function st = save(this)
-           st = struct();
-%            st.uiDeviceX = this.uiDeviceX.save();
-%            st.uiDeviceY = this.uiDeviceY.save();
-        end
-        
-        function load(this, st)
-%            this.uiDeviceX.load(st.uiDeviceX);
-%            this.uiDeviceY.load(st.uiDeviceY);
-        end
-        
     
     end
     
     
     methods (Access = protected)
         
-        function fileWatchHandler(this, src, directory, filename)
-            img = [];
-            path = [directory, '/', filename];
-            switch filename(end-2:end)
-                case {'png', 'bmp', 'jpg'}
-                    img = imread(path);
-                    
-                     
-                case 'spe'
-                    
-            end
-            
-            if length(size(img)) == 3
-                img = mean(img, 3);
-            end
-            this.hsaAxes.imagesc(img);
-            
-            
+        function onCloseRequest(this, src, evt)
+%             delete(this.hFigure);
+%             this.hFigure = [];
         end
+        
+      
         
         function onToggleAllChange(this, src, evt)
             
