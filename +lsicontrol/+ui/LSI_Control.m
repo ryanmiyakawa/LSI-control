@@ -1701,7 +1701,7 @@ classdef LSI_Control < mic.Base
             fhIsAcquired    = @(stUnit, stState) this.scanIsAcquired(stState, u8OutputIdx);
             fhOnComplete    = @(stUnit, stState) this.onScanComplete(dInitialState, fhSetState);
             fhOnAbort       = @(stUnit, stState) this.onScanAbort(dInitialState, fhSetState, fhIsAtState);
-            dDelay          = 0.2;
+            dDelay          = 0.05;
             % Create a new scan:
             this.scanHandler = mic.Scan(this.clock, ...
                                         stRecipe, ...
@@ -2017,6 +2017,20 @@ classdef LSI_Control < mic.Base
                     this.dScanOutput(dYidx, dXidx) = dAcquiredValue; %#ok<FNDSB>
                     
                     h = imagesc(this.haScanOutput, this.ceScanCoordinates{1}, this.ceScanCoordinates{2}, (this.dScanOutput));
+                    
+                    try
+                    dMn = min(this.dScanOutput(~isnan(this.dScanOutput(:))));
+                    dMx = max(this.dScanOutput(~isnan(this.dScanOutput(:))));
+                    if (~isempty(dMn) && ~isempty(dMx))
+                        this.haScanOutput.CLim = [dMn, dMx];
+                    else
+                        this.haScanOutput.CLim = [0, 1];
+                    end
+                    
+                    catch
+                        fprintf(lasterr);
+                    end
+                    
                     this.haScanOutput.YDir = 'normal';
                     h.HitTest = 'off';
                     this.haScanOutput.ButtonDownFcn = @(src, evt) this.handleScanOutputClick(evt, 2);
