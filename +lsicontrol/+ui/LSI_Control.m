@@ -1101,7 +1101,7 @@ classdef LSI_Control < mic.Base
             this.uiButtonStop.setColor(this.dDisableColor);
             this.uipbExposureProgress.set(0);
             
-            
+           
             switch u8mode
                 case this.U8CAMERA_MODE_ACQUIRE
                     this.uipbExposureProgress.setColor([.4, .4, .8]);
@@ -1110,8 +1110,9 @@ classdef LSI_Control < mic.Base
                 case this.U8CAMERA_MODE_FOCUS
                     this.uipbExposureProgress.setColor([.9, .74, .9]);
                     this.apiCamera.startFocus();
-                    
             end
+            
+            % When image is ready, it will be handled by this.onCameraImageReady
         end
         
         % Call this to abort acquisition or focus gracefully.
@@ -1249,25 +1250,14 @@ classdef LSI_Control < mic.Base
             end
             
             % Add Reticle coordinates:
-            if isempty(this.apiReticle)
-                stLog.reticleCX = 'off';
-                stLog.reticleCY = 'off';
-                stLog.reticleCZ = 'off';
-                stLog.reticleRx = 'off';
-                stLog.reticleRy = 'off';
-                stLog.reticleFX = 'off';
-                stLog.reticleFY = 'off';
-            else 
-                dHexapodPositions = this.getHexapodRaw();
-                stLog.reticleCX = sprintf('%0.6f', dHexapodPositions(1));
-                stLog.reticleCY = sprintf('%0.6f', dHexapodPositions(2));
-                stLog.reticleCZ = sprintf('%0.6f', dHexapodPositions(3));
-                stLog.reticleRx = sprintf('%0.6f', dHexapodPositions(4));
-                stLog.reticleFX = sprintf('%0.6f', dHexapodPositions(5));
-                stLog.reticleFY = sprintf('%0.6f', dHexapodPositions(6));
-            end
-            
-            
+
+            stLog.reticleCX = this.uiDeviceArrayReticle{1}.getDestRaw();
+            stLog.reticleCY = this.uiDeviceArrayReticle{2}.getDestRaw();
+            stLog.reticleCZ = this.uiDeviceArrayReticle{3}.getDestRaw();
+            stLog.reticleRx = this.uiDeviceArrayReticle{4}.getDestRaw();
+            stLog.reticleRy = this.uiDeviceArrayReticle{5}.getDestRaw();
+            stLog.reticleFX = this.uiDeviceArrayReticle{6}.getDestRaw();
+            stLog.reticleFY = this.uiDeviceArrayReticle{7}.getDestRaw();
             
             % Add temperature and exposure times:
             if isempty(this.apiCamera)
@@ -1381,20 +1371,33 @@ classdef LSI_Control < mic.Base
             
             % Use point 1 as origin:
             
-            % Measured basis vectors:
+            % Fid basis in measured coordinates
             dBetaM1 = [dX2M - dX1M; dY2M - dY1M];
             dBetaM2 = [dX3M - dX1M; dY3M - dY1M];
+            % Fid origin in measured coordinates
+            dOriginM = [dX1M;dY1M];
             
-            % Library basis vectors:
+            % Fid basis in lib coordinates
             dBetaL1 = [dX2L - dX1L; dY2L - dY1L];
             dBetaL2 = [dX3L - dX1L; dY3L - dY1L];
+             % Fid origin in library coordinates
+            dOriginL = [dX1L;dY1L];
             
-            % Write L->M change of basis:
-            T = inv([dBetaM1, dBetaM2]); 
+            % Converts lib coordinates to fid basis:
+            TL2F = inv([dBetaL1,dBetaL2]);
             
-            % Write target vector in basis M then translate back to lab
-            % coords
-            this.fhFidTransform = @(X) (T*(X - [dX1L; dY1L]))' * [dBetaL1, dBetaL2] + [dX1M, dY1M];
+            % Converts measured coordinates to fid basis:
+            TM2F = inv([dBetaM1,dBetaM2]);
+            
+            % Takes library coordinates, shifts, and writes in fid basis:
+            fhLib2Fid = @(X) TL2F*(X - dOriginL);
+            
+            % Takes Fid basis coordinates and returns measured coordinates:
+            fhFid2Meas = @(X) [dBetaM1,dBetaM2]*X;
+            
+            
+            this.fhFidTransform = @(X) fhFid2Meas(fhLib2Fid(X)) + dOriginM;
+%             this.fhFidTransform = @(X) (T*(X - [dX1L; dY1L]))' * [dBetaL1, dBetaL2] + [dX1M, dY1M];
                
             this.uibFidGo.setColor([0.8, 0.9, 0.8]);
         end
@@ -1829,21 +1832,21 @@ classdef LSI_Control < mic.Base
                             return
                         end
                         
-                        
-                        dUnit =  this.uiDeviceArrayReticle{dAxis - 8}.getUnit().name;
-                        dCommandedDest = this.uiDeviceArrayReticle{dAxis - 8}.getDestCal(dUnit);
-                        dAxisPosition = this.uiDeviceArrayReticle{dAxis - 8}.getValCal(dUnit);
-                        dEps = abs(dCommandedDest - dAxisPosition);
-                        fprintf('Commanded destination: %0.3f, Actual pos: %0.3f, eps: %0.4f\n', ...
-                            dCommandedDest, dAxisPosition, dEps);
-                        dTolerance = 0.001; % scan unit assumed to be mm here
-                        if ~this.uiDeviceArrayReticle{retAxis}.getDevice().isReady() || ...
-                                dEps > dTolerance
-                            
-                            fprintf('Reticle is within tolerance\n');
-                            isAtState = false;
-                            return
-                        end
+%                         
+%                         dUnit =  this.uiDeviceArrayReticle{dAxis - 8}.getUnit().name;
+%                         dCommandedDest = this.uiDeviceArrayReticle{dAxis - 8}.getDestCal(dUnit);
+%                         dAxisPosition = this.uiDeviceArrayReticle{dAxis - 8}.getValCal(dUnit);
+%                         dEps = abs(dCommandedDest - dAxisPosition);
+%                         fprintf('Commanded destination: %0.3f, Actual pos: %0.3f, eps: %0.4f\n', ...
+%                             dCommandedDest, dAxisPosition, dEps);
+%                         dTolerance = 0.001; % scan unit assumed to be mm here
+%                         if ~this.uiDeviceArrayReticle{retAxis}.getDevice().isReady() || ...
+%                                 dEps > dTolerance
+%                             
+%                             fprintf('Reticle is within tolerance\n');
+%                             isAtState = false;
+%                             return
+%                         end
                 end
             end
             
@@ -1867,7 +1870,7 @@ classdef LSI_Control < mic.Base
                      % flag that a "scan acquisition" has commenced:
                     this.lIsScanAcquiring = true;
             
-                    this.onAcquire();
+                    this.onStartCamera(this.U8CAMERA_MODE_ACQUIRE);
                     % This will call image capture and then save
                     
                 case 5 % pause
