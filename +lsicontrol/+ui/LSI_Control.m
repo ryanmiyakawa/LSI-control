@@ -1345,7 +1345,9 @@ classdef LSI_Control < mic.Base
             [~, fl, ext] = fileparts(cFileName);
             save(fullfile(cSubDirPath, [fl '.mat']), 'stLog', 'dImg');
             
-            imwrite(dImg, fullfile(cSubDirPath, cFileName), 'png');
+            % Scale dImg to 255 for png
+            dImgSc = floor(dImg/256);
+            imwrite(dImgSc, fullfile(cSubDirPath, cFileName), 'png');
         end
         
         function onBinningChange(this, src, ~)
