@@ -1869,6 +1869,18 @@ classdef LSI_Control < mic.Base
             % outputIdx: {'Image capture', 'Image intensity', 'Line Contrast', 'Line Pitch', 'Pause 2s'}
             switch outputIdx
                 case {1, 2, 3, 4} % Image caputre
+                    
+                    % If this a 3D scan using image capture, assume new series 
+                    % should be created with each move of top axis
+                    if length(u8ScanAxisIdx) == 3 && double(u8Idx) ~= 1
+                        % Check if axis 1 has changed:
+                        if this.stLastScanState.values(1) ~= stateList(u8Idx).values(1)
+                            % update series number:
+                            this.dImageSeriesNumber = this.dImageSeriesNumber + 1;
+                        end
+                        
+                    end
+                    
                      % flag that a "scan acquisition" has commenced:
                     this.lIsScanAcquiring = true;
             
@@ -1882,6 +1894,8 @@ classdef LSI_Control < mic.Base
                     this.lIsScanAcquiring = false;
             end
             
+            % Set this state as the last scan state:
+            this.stLastScanState = stateList(u8Idx);
             
         end
         
