@@ -1267,6 +1267,12 @@ classdef LSI_Control < mic.Base
                 stLog.cameraTemp = sprintf('%0.1f', this.apiCamera.getTemperature());
                 stLog.cameraExposureTime = sprintf('%0.4f', this.apiCamera.getExposureTime()); 
             end
+            
+            % Add DMI reticle x and y values:
+            this.apiMFDriftMonitor.forceUpdate();
+            stLog.DMIRetX = this.apiMFDriftMonitor.getDMIValue(1);
+            stLog.DMIRetY = this.apiMFDriftMonitor.getDMIValue(2);
+            
         end
         
         
