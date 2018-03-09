@@ -1063,7 +1063,7 @@ classdef LSI_Control < mic.Base
             % update image name:
             [path, nPNGs] = this.getDataSubdirectoryPath();
             
-            cFileName = fullfile(path, sprintf('%0.3d.png', nPNGs + 1));
+            cFileName = fullfile(path, sprintf('%0.4d.png', nPNGs + 1));
             [~, name, ext] = fileparts(cFileName);
             
             this.uieImageName.set([name, ext]);
@@ -1162,7 +1162,7 @@ classdef LSI_Control < mic.Base
                 mkdir(thisSeriesPath);
             end
             
-            cFileName = sprintf('%s-%0.3d-%0.3d', datestr(now,'yyyymmdd'), this.dImageSeriesNumber, dIdx);
+            cFileName = sprintf('%s-%0.3d-%0.4d', datestr(now,'yyyymmdd'), this.dImageSeriesNumber, dIdx);
                         
             this.saveAndLogImage(thisSeriesPath, seriesPath, cFileName, dImg);
         end
@@ -1874,9 +1874,11 @@ classdef LSI_Control < mic.Base
                     % should be created with each move of top axis
                     if length(u8ScanAxisIdx) == 3 && double(u8Idx) ~= 1
                         % Check if axis 1 has changed:
-                        if this.stLastScanState.values(1) ~= stateList(u8Idx).values(1)
+                        if this.stLastScanState.values(1) ~= stateList{u8Idx}.values(1)
                             % update series number:
                             this.dImageSeriesNumber = this.dImageSeriesNumber + 1;
+                            
+                            
                         end
                         
                     end
@@ -1895,7 +1897,7 @@ classdef LSI_Control < mic.Base
             end
             
             % Set this state as the last scan state:
-            this.stLastScanState = stateList(u8Idx);
+            this.stLastScanState = stateList{u8Idx};
             
         end
         

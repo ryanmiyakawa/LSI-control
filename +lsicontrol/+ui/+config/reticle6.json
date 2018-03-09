@@ -7,18 +7,6 @@
 			"slope": 1000,
 			"offset": 0,
 			"precision": 3
-		},
-		{
-			"name": "nm",
-			"slope": 1000000,
-			"offset": 0,
-			"precision": 3
-		},
-		{
-			"name": "mm",
-			"slope": 1,
-			"offset": 0,
-			"precision": 3
 		}
 	],
     "step": 0.1
