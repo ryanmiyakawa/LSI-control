@@ -1275,8 +1275,8 @@ classdef LSI_Control < mic.Base
             
             else
                  this.apiMFDriftMonitor.forceUpdate();
-                 stLog.DMIRetX = this.apiMFDriftMonitor.getDMIValue(1);
-                 stLog.DMIRetY = this.apiMFDriftMonitor.getDMIValue(2);
+                 stLog.DMIRetX = sprintf('%0.10f', this.apiMFDriftMonitor.getDMIValue(1)); 
+                 stLog.DMIRetY = sprintf('%0.10f', this.apiMFDriftMonitor.getDMIValue(2)); 
             end
            
             
