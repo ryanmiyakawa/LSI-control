@@ -1838,30 +1838,32 @@ classdef LSI_Control < mic.Base
                     case {9, 10, 11, 12, 13, 14, 15} % Reticle
                         retAxis = dAxis - 8;
                         
-                        if this.uiDeviceArrayReticle{retAxis}.getDevice().isReady()
-                            fprintf('(LSI-control) scan: Reticle axis is ready\n');
-                            isAtState = true;
-                            return
-                        else
-                            isAtState = false;
-                            return
-                        end
-                        
-%                         
-%                         dUnit =  this.uiDeviceArrayReticle{dAxis - 8}.getUnit().name;
-%                         dCommandedDest = this.uiDeviceArrayReticle{dAxis - 8}.getDestCal(dUnit);
-%                         dAxisPosition = this.uiDeviceArrayReticle{dAxis - 8}.getValCal(dUnit);
-%                         dEps = abs(dCommandedDest - dAxisPosition);
-%                         fprintf('Commanded destination: %0.3f, Actual pos: %0.3f, eps: %0.4f\n', ...
-%                             dCommandedDest, dAxisPosition, dEps);
-%                         dTolerance = 0.001; % scan unit assumed to be mm here
-%                         if ~this.uiDeviceArrayReticle{retAxis}.getDevice().isReady() || ...
-%                                 dEps > dTolerance
-%                             
-%                             fprintf('Reticle is within tolerance\n');
+%                         if this.uiDeviceArrayReticle{retAxis}.getDevice().isReady()
+%                             fprintf('(LSI-control) scan: Reticle axis is ready\n');
+%                             isAtState = true;
+%                             return
+%                         else
 %                             isAtState = false;
 %                             return
 %                         end
+                        
+                        
+                        dUnit =  this.uiDeviceArrayReticle{dAxis - 8}.getUnit().name;
+                        dCommandedDest = this.uiDeviceArrayReticle{dAxis - 8}.getDestCal(dUnit);
+                        dAxisPosition = this.uiDeviceArrayReticle{dAxis - 8}.getValCal(dUnit);
+                        dEps = abs(dCommandedDest - dAxisPosition);
+                        fprintf('Commanded destination: %0.3f, Actual pos: %0.3f, eps: %0.4f\n', ...
+                            dCommandedDest, dAxisPosition, dEps);
+                        dTolerance = 0.004; % scan unit assumed to be mm here
+%                         if ~this.uiDeviceArrayReticle{retAxis}.getDevice().isReady() || ...
+                         if       dEps > dTolerance
+                            
+                            fprintf('Reticle is within tolerance\n');
+                            isAtState = false;
+                            return
+                         end
+                        isAtState = true;
+                        
                 end
             end
             
