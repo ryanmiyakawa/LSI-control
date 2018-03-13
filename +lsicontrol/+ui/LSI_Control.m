@@ -216,7 +216,8 @@ classdef LSI_Control < mic.Base
                         'Ret Rx', ...
                         'Ret Ry', ...
                         'Ret Fine X', ...
-                        'Ret Fine Y'};
+                        'Ret Fine Y', ...
+                        'Do Nothing'};
         ceScanOutputLabels = {'Image capture', 'Image intensity', 'Line Contrast', 'Line Pitch', 'Pause 2s', 'Wafer Diode'};
     end
     
@@ -1657,6 +1658,9 @@ classdef LSI_Control < mic.Base
                         dUnit =  this.uiDeviceArrayReticle{dAxis - 8}.getUnit().name;
                         dInitialState.values(k) = this.uiDeviceArrayReticle{dAxis - 8}.getDestCal(dUnit);
                         
+                    case 16 % "do nothing"
+                        dInitialState.values(k) = 1;
+                        
                 end
             end
             
@@ -1804,6 +1808,8 @@ classdef LSI_Control < mic.Base
                     case {9, 10, 11, 12, 13, 14, 15} % Reticle
                         this.uiDeviceArrayReticle{dAxis - 8}.setDestCal(dVal);
                         this.uiDeviceArrayReticle{dAxis - 8}.moveToDest();
+                    case 16 % "do nothing"
+                       
                 end
             end
             
@@ -1862,6 +1868,10 @@ classdef LSI_Control < mic.Base
 %                             isAtState = false;
 %                             return
 %                         end
+
+                     case 16 % "do nothing"
+                        isAtState = true;
+                            return
                 end
             end
             
