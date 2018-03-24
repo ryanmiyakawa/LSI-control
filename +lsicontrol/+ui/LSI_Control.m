@@ -144,7 +144,7 @@ classdef LSI_Control < mic.Base
         
         % Scans:
         uitgScan
-        ceTabList = {'1D-scan', '2D-scan', '3D-scan', 'LSI P/S', 'LSI P/S Cont. Correction'}
+        ceTabList = {'1D-scan', '2D-scan', '3D-scan', '1D Coupled', '2D Coupled'}
         
         
         % Scan setups

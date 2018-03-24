@@ -1,1 +1,1 @@
-[{"key":"LSI Exp P/s 10-pt","value":[["Ret Fine X",0,0.0234,0.234,0,true],["Ret Fine Y",0,0.117,0.117,0,true],["Ret Fine Y",0,0.0234,0.234,0,true],["Ret Fine X",0,0.117,0.117,0,true],"Image capture",false]},{"key":"Hexapod Scan Test","value":[["Hexapod X",0,0.1,1,0,true],["Hexapod Y",0,0.5,0.5,0,true],["Hexapod Y",0,0.1,1,0,true],["Hexapod X",0,0.5,0.5,0,true],"Pause 2s",false]}]
+{"key":"coupled motion test","value":[["Hexapod X",0,0.01,0.03,0,false],["Hexapod Y",0,0.01,0.03,0,false],["Hexapod Z",0,0.01,0.03,0,false],["Hexapod Rx",0,0.01,0.03,0,false],"Pause 2s",false]}
