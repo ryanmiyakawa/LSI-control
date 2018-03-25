@@ -67,11 +67,15 @@ classdef LSI_Control < mic.Base
         uiButtonFocus
         uiButtonStop
         uiButtonSaveImage
+        uiButtonSetBackground
         uipBinning
         
         uipbExposureProgress
         
         uieImageName
+        
+        dBackgroundImage = zeros(650)
+        uicbSubtractBackground
         
         % Configuration
         uicHexapodConfigs
@@ -565,6 +569,14 @@ classdef LSI_Control < mic.Base
                 'fhDirectCallback', @this.onSaveImage ...
             );
         
+            this.uiButtonSetBackground = mic.ui.common.Button(...
+                'cText', 'Set Background Image', ...
+                'fhDirectCallback', @this.onSetBackground ...
+            );
+        
+            this.uicbSubtractBackground = mic.ui.common.Checkbox('cLabel', 'Subtract background');        
+        
+        
             this.uieImageName = mic.ui.common.Edit(...
                 'cLabel', 'Image name' ...
             );
@@ -1034,7 +1046,13 @@ classdef LSI_Control < mic.Base
         % Callback for what to do when image is ready from camera
         function onCameraImageReady(this, data)
             
-            this.hsaAxes.imagesc(data);
+            if this.uicbSubtractBackground.lChecked && ...
+                    size(data, 1) == size(this.dBackgroundImage, 1) && ...
+                        size(data, 2) == size(this.dBackgroundImage, 2)
+                this.hsaAxes.imagesc(data - this.dBackgroundImage);
+            else
+                this.hsaAxes.imagesc(data);
+            end
             
             % If focusing, don't bother to reset buttons or save image:
             if this.apiCamera.lIsFocusing
@@ -1188,9 +1206,12 @@ classdef LSI_Control < mic.Base
             this.uipbExposureProgress.set(0);
             this.uipbExposureProgress.setColor([.95, .95, .95]);
             this.uiButtonSaveImage.setColor(this.dInactiveColor);
-            
-            
-            
+        end
+        
+        
+        function onSetBackground(this, ~, ~)
+            this.dBackgroundImage = this.apiCamera.dCurrentImage;
+            this.uiButtonSetBackground.setColor([.6, .6, .7]);
         end
         
         % get data subdirectory
@@ -1355,9 +1376,16 @@ classdef LSI_Control < mic.Base
             fwrite(fid, cWriteStr);
             fclose(fid);
 
+            % Prepare background subtracted image:
+            if size(dImg,1) == size(this.dBackgroundImage,1) && size(dImg,2) == size(this.dBackgroundImage,2)
+                dImgBk = dImg - this.dBackgroundImage;
+            else
+                dImgBk = dImg;
+            end
+            
             % Save .mat file
             [~, fl, ext] = fileparts(cFileName);
-            save(fullfile(cSubDirPath, [fl '.mat']), 'stLog', 'dImg');
+            save(fullfile(cSubDirPath, [fl '.mat']), 'stLog', 'dImg', 'dImgBk');
             
             % Scale dImg to 255 for png
             dImgSc = floor(dImg/256);
