@@ -222,7 +222,8 @@ classdef LSI_Control < mic.Base
                         'Ret Fine X', ...
                         'Ret Fine Y', ...
                         'Do Nothing'};
-        ceScanOutputLabels = {'Image capture', 'Image intensity', 'Line Contrast', 'Line Pitch', 'Pause 2s', 'Wafer Diode'};
+        ceScanOutputLabels = {'Image capture', 'Image intensity', ...
+            'Background diff', 'Line Pitch', 'Pause 2s', 'Wafer Diode'};
     end
     
     properties (Access = private)
@@ -570,7 +571,7 @@ classdef LSI_Control < mic.Base
             );
         
             this.uiButtonSetBackground = mic.ui.common.Button(...
-                'cText', 'Set Background Image', ...
+                'cText', 'Set Bkg Image', ...
                 'fhDirectCallback', @this.onSetBackground ...
             );
         
@@ -1046,7 +1047,7 @@ classdef LSI_Control < mic.Base
         % Callback for what to do when image is ready from camera
         function onCameraImageReady(this, data)
             
-            if this.uicbSubtractBackground.lChecked && ...
+            if this.uicbSubtractBackground.get() && ...
                     size(data, 1) == size(this.dBackgroundImage, 1) && ...
                         size(data, 2) == size(this.dBackgroundImage, 2)
                 this.hsaAxes.imagesc(data - this.dBackgroundImage);
@@ -1294,11 +1295,12 @@ classdef LSI_Control < mic.Base
             if isempty(this.apiMFDriftMonitor)
                 stLog.DMIRetX = 'off';
                 stLog.DMIRetY = 'off';
-            
+                stLog.HSZ = 'off';
             else
                  this.apiMFDriftMonitor.forceUpdate();
                  stLog.DMIRetX = sprintf('%0.10f', this.apiMFDriftMonitor.getDMIValue(1)); 
                  stLog.DMIRetY = sprintf('%0.10f', this.apiMFDriftMonitor.getDMIValue(2)); 
+                 stLog.HSZ = sprintf('%0.10f', this.apiMFDriftMonitor.getHeightSensorValue(9)); 
             end
            
             
@@ -1728,7 +1730,7 @@ classdef LSI_Control < mic.Base
             % Set series number:
             
             switch u8OutputIdx
-                case {1, 3, 4} % Any time image series should be saved
+                case {1, 4} % Any time image series should be saved
                    if isempty(this.apiCamera)
                        msgbox('No Camera available for image acquisition')
                        return
@@ -1988,11 +1990,17 @@ classdef LSI_Control < mic.Base
                         dImg = this.apiCamera.getImage();
                         dAcquiredValue = sum(dImg(:));
                         
-                    case 3 % Line Contrast
+                    case 3 % Integrated background diff
                         dImg = this.apiCamera.getImage();
                         
+                        if this.uicbSubtractBackground.get() && ...
+                                size(dImg, 1) == size(this.dBackgroundImage, 1) && ...
+                                size(dImg, 2) == size(this.dBackgroundImage, 2)
+                            dImg = dImg - this.dBackgroundImage;
+                        end
+                        
                         % Get contrast here:
-                        dAcquiredValue = sum(dImg(:));
+                        dAcquiredValue = sum(abs(dImg(:)));
                     case 4 % Line pitch
                         dImg = this.apiCamera.getImage();
                         
@@ -2453,15 +2461,16 @@ classdef LSI_Control < mic.Base
             
             this.uiCommPIMTECamera.build    (this.hpCameraControls, 10,  15);
             
-            this.uipBinning.build           (this.hpCameraControls, 545, 40, 70, 30);
-            this.uiButtonFocus.build        (this.hpCameraControls, 630, 50, 60,  30);
-            this.uiButtonAcquire.build      (this.hpCameraControls, 710, 50, 60,  30);
-            this.uiButtonStop.build         (this.hpCameraControls, 790, 50, 60,  30);
+            this.uipBinning.build           (this.hpCameraControls, 545, 40, 70, 25);
+            this.uiButtonFocus.build        (this.hpCameraControls, 630, 50, 60,  25);
+            this.uiButtonAcquire.build      (this.hpCameraControls, 710, 50, 60,  25);
+            this.uiButtonStop.build         (this.hpCameraControls, 790, 50, 60,  25);
             
-            this.uieImageName.build         (this.hpCameraControls, 180 + 370, 95, 200, 25);
-            this.uiButtonSaveImage.build    (this.hpCameraControls, 400 + 370, 110, 80, 20);
+            this.uieImageName.build         (this.hpCameraControls, 180 + 370, 115, 200, 25);
+            this.uiButtonSaveImage.build    (this.hpCameraControls, 400 + 370, 130, 80, 20);
            
-            
+            this.uiButtonSetBackground.build(this.hpCameraControls,  630, 90, 95, 25);
+            this.uicbSubtractBackground.build(this.hpCameraControls, 730, 90, 120, 25);
             
             
             this.uipbExposureProgress.build(this.hpCameraControls, 10, 115);
@@ -2515,7 +2524,7 @@ classdef LSI_Control < mic.Base
         end
         
         
-        function onButtonUseDeviceDataChange(this, src, evt)
+        function onButtonUseDeviceDataChange(this, src, ~)
             
             this.uiDeviceX.getValCalDisplay()
             this.uiDeviceY.getValCalDisplay()
