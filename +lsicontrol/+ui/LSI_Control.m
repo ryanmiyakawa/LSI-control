@@ -35,6 +35,7 @@ classdef LSI_Control < mic.Base
         uiDeviceArrayHexapod
         uiDeviceArrayGoni
         uiDeviceArrayReticle
+        uiDeviceArrayWafer
         
         % Bridges
         oHexapodBridges
@@ -57,6 +58,7 @@ classdef LSI_Control < mic.Base
         ceDMIChannelNames = {'DMI-Ret-X', 'DMI-Ret-Y'}
         dDMIDisplayChannels = 1:2
         uiDMIChannels
+        uiHSSimpleZ
         uiDoseMonitor
         
         % Camera
@@ -81,6 +83,7 @@ classdef LSI_Control < mic.Base
         uicHexapodConfigs
         uicGoniConfigs
         uicReticleConfigs
+        uicWaferConfigs
         uicTemperatureConfig
         uicExposureConfig
 
@@ -193,7 +196,7 @@ classdef LSI_Control < mic.Base
     
     properties (Constant)
         dWidth  = 1750;
-        dHeight =  1000;
+        dHeight =  1100;
         
         % Camera modes
         U8CAMERA_MODE_ACQUIRE = 0
@@ -205,6 +208,8 @@ classdef LSI_Control < mic.Base
         cGoniLabels = {'Goni-Rx', 'Goni-Ry'};
         cReticleLabels = {'Ret-C-X', 'Ret-C-Y', 'Ret-C-Z', 'Ret-C-Rx', 'Ret-C-Ry',...
                          'Ret-F-X', 'Ret-F-Y'};
+                     
+        cWaferLabels = {'Waf-C-X', 'Waf-C-Y', 'Waf-C-Z'};
         
         ceScanAxisLabels = {'Hexapod X', ...
                         'Hexapod Y', ...
@@ -221,9 +226,12 @@ classdef LSI_Control < mic.Base
                         'Ret Ry', ...
                         'Ret Fine X', ...
                         'Ret Fine Y', ...
+                        'Waf Crs X', ...
+                        'Waf Crs Y', ...
+                        'Waf Crs Z', ...
                         'Do Nothing'};
         ceScanOutputLabels = {'Image capture', 'Image intensity', ...
-            'Background diff', 'Line Pitch', 'Pause 2s', 'Wafer Diode'};
+            'Background diff', 'Line Pitch', 'Pause 2s', 'Wafer Diode', 'HS Simple Z'};
     end
     
     properties (Access = private)
@@ -334,7 +342,7 @@ classdef LSI_Control < mic.Base
             
             this.uicommWaferDoseMonitor = mic.ui.device.GetSetLogical(...
                 'clock', this.clock, ...
-                'dWidthName', 130, ...
+                'dWidthName', 85, ...
                 'lShowLabels', false, ...
                 'lShowDevice', false, ...
                 'lShowInitButton', false, ...
@@ -352,7 +360,7 @@ classdef LSI_Control < mic.Base
 
             this.uicommMFDriftMonitor = mic.ui.device.GetSetLogical(...
                 'clock', this.clock, ...
-                'dWidthName', 130, ...
+                'dWidthName', 85, ...
                 'lShowLabels', false, ...
                 'lShowDevice', false, ...
                 'lShowInitButton', false, ...
@@ -390,6 +398,11 @@ classdef LSI_Control < mic.Base
             for k = 1:7
                 this.uicReticleConfigs{k} = mic.config.GetSetNumber(...
                     'cPath', fullfile(this.cConfigPath, sprintf('reticle%d.json', k))...
+                    );
+            end
+            for k = 1:3
+                this.uicWaferConfigs{k} = mic.config.GetSetNumber(...
+                    'cPath', fullfile(this.cConfigPath, sprintf('wafer%d.json', k))...
                     );
             end
             
@@ -444,6 +457,18 @@ classdef LSI_Control < mic.Base
                    'config', this.uicReticleConfigs{k} ...
                    );
            end
+           
+           for k = 1:length(this.cWaferLabels)
+               this.uiDeviceArrayWafer{k} = mic.ui.device.GetSetNumber( ...
+                   'cName', this.cWaferLabels{k}, ...
+                   'clock', this.clock, ...
+                   'cLabel', this.cWaferLabels{k}, ...
+                   'lShowLabels', false, ...
+                   'lShowStores', false, ...
+                   'lValidateByConfigRange', true, ...
+                   'config', this.uicWaferConfigs{k} ...
+                   );
+           end
             
            % Init UI for getNumbers on DMI and dose monitor
            dWidthName = 55;
@@ -483,11 +508,34 @@ classdef LSI_Control < mic.Base
                     'fhIsVirtual', @()isempty(this.apiMFDriftMonitor) ...
                     );
                 
-                
-                  
-                
-            
            end
+           
+           cPathConfig = fullfile(...
+               bl12014.Utils.pathUiConfig(), ...
+               'get-number', ...
+               'config-lsi-hs-simplez.json' ...
+               );
+           
+           uiConfig = mic.config.GetSetNumber(...
+               'cPath',  cPathConfig ...
+               );
+           this.uiHSSimpleZ = mic.ui.device.GetNumber(...
+                    'clock', this.clock, ...
+                    'dWidthName', dWidthName, ...
+                    'dWidthUnit', dWidthUnit, ...
+                    'dWidthVal', dWidthVal, ...
+                    'dWidthPadUnit', dWidthPadUnit, ...
+                    'cName', 'lsi-HS-simpleZ', ...
+                    'config', uiConfig, ...
+                    'cLabel', 'HS Simple Z', ...
+                    'lUseFunctionCallbacks', true, ...
+                    'lShowZero', false, ...
+                    'lShowRel',  false, ...
+                    'lShowDevice', false, ...
+                    'fhGet', @()this.apiMFDriftMonitor.getSimpleZ(),...
+                    'fhIsReady', @()this.apiMFDriftMonitor.isReady(),...
+                    'fhIsVirtual', @()isempty(this.apiMFDriftMonitor) ...
+                    );
             
            
            % adding some comments:
@@ -1028,7 +1076,6 @@ classdef LSI_Control < mic.Base
             this.apiGoni = [];
         end
         
-        % These don't work yet but we need to hook this in
         function setReticleAxisDevice(this, device, index)
             this.uiDeviceArrayReticle{index}.setDevice(device);
             this.uiDeviceArrayReticle{index}.turnOn();
@@ -1039,6 +1086,18 @@ classdef LSI_Control < mic.Base
         function disconnectReticleAxisDevice(this, index)
             this.uiDeviceArrayReticle{index}.turnOff();
             this.uiDeviceArrayReticle{index}.setDevice([]);
+        end
+        
+        function setWaferAxisDevice(this, device, index)
+            this.uiDeviceArrayWafer{index}.setDevice(device);
+            this.uiDeviceArrayWafer{index}.turnOn();
+            this.uiDeviceArrayWafer{index}.syncDestination();
+        end
+        
+        
+        function disconnectWaferAxisDevice(this, index)
+            this.uiDeviceArrayWafer{index}.turnOff();
+            this.uiDeviceArrayWafer{index}.setDevice([]);
         end
         
 %% IMAGE ACQUISITION
@@ -1273,7 +1332,6 @@ classdef LSI_Control < mic.Base
             end
             
             % Add Reticle coordinates:
-
             stLog.reticleCX = this.uiDeviceArrayReticle{1}.getDestRaw();
             stLog.reticleCY = this.uiDeviceArrayReticle{2}.getDestRaw();
             stLog.reticleCZ = this.uiDeviceArrayReticle{3}.getDestRaw();
@@ -1300,7 +1358,7 @@ classdef LSI_Control < mic.Base
                  this.apiMFDriftMonitor.forceUpdate();
                  stLog.DMIRetX = sprintf('%0.10f', this.apiMFDriftMonitor.getDMIValue(1)); 
                  stLog.DMIRetY = sprintf('%0.10f', this.apiMFDriftMonitor.getDMIValue(2)); 
-                 stLog.HSZ = sprintf('%0.10f', this.apiMFDriftMonitor.getHeightSensorValue(9)); 
+                 stLog.HSZ = sprintf('%0.10f', this.apiMFDriftMonitor.getSimpleZ()); 
             end
            
             
@@ -1534,6 +1592,8 @@ classdef LSI_Control < mic.Base
             end
         end
         
+        
+        
         function positions = getReticleFineRaw(this)
             for k = 6:7
                 positions(k) = this.uiDeviceArrayReticle{k}.getDestRaw(); %#ok<AGROW>
@@ -1544,6 +1604,19 @@ classdef LSI_Control < mic.Base
             for k = 6:7
                 this.uiDeviceArrayReticle{k}.setDestRaw(positions(k));
                 this.uiDeviceArrayReticle{k}.moveToDest();
+            end
+        end
+        
+        function positions = getWaferCoarseRaw(this)
+            for k = 1:3
+                positions(k) = this.uiDeviceArrayWafer{k}.getDestRaw(); %#ok<AGROW>
+            end
+        end
+        
+        function setWaferCoarseRaw(this, positions)
+            for k = 1:3
+                this.uiDeviceArrayWafer{k}.setDestRaw(positions(k));
+                this.uiDeviceArrayWafer{k}.moveToDest();
             end
         end
         % -------------------------*****************----------------------
@@ -1665,7 +1738,7 @@ classdef LSI_Control < mic.Base
                         end
                         
                         dUnit =  this.uiDeviceArrayHexapod{dAxis}.getUnit().name;
-                        dInitialState.values(k) = this.uiDeviceArrayHexapod{dAxis}.getDestCal(dUnit);
+                        dInitialState.values(k) = this.uiDeviceArrayHexapod{dAxis}.getValCal(dUnit);
                         
                     case {7, 8} % Goni
                         if isempty(this.apiGoni)
@@ -1675,7 +1748,7 @@ classdef LSI_Control < mic.Base
 %                             return
                         end
                         dUnit =  this.uiDeviceArrayGoni{dAxis}.getUnit().name;
-                        dInitialState.values(k) = this.uiDeviceArrayGoni{dAxis - 6}.getDestCal(dUnit);
+                        dInitialState.values(k) = this.uiDeviceArrayGoni{dAxis - 6}.getValCal(dUnit);
                         
                     case {9, 10, 11, 12, 13, 14, 15} % Reticle
 %                         if isempty(this.apiReticle)
@@ -1686,9 +1759,12 @@ classdef LSI_Control < mic.Base
 %                         end
                         
                         dUnit =  this.uiDeviceArrayReticle{dAxis - 8}.getUnit().name;
-                        dInitialState.values(k) = this.uiDeviceArrayReticle{dAxis - 8}.getDestCal(dUnit);
+                        dInitialState.values(k) = this.uiDeviceArrayReticle{dAxis - 8}.getValCal(dUnit);
                         
-                    case 16 % "do nothing"
+                    case {16, 17, 18} % Wafer
+                        dUnit =  this.uiDeviceArrayWafer{dAxis - 15}.getUnit().name;
+                        dInitialState.values(k) = this.uiDeviceArrayWafer{dAxis - 15}.getValCal(dUnit);
+                    case 19 % "do nothing"
                         dInitialState.values(k) = 1;
                         
                 end
@@ -1839,7 +1915,10 @@ classdef LSI_Control < mic.Base
                     case {9, 10, 11, 12, 13, 14, 15} % Reticle
                         this.uiDeviceArrayReticle{dAxis - 8}.setDestCal(dVal);
                         this.uiDeviceArrayReticle{dAxis - 8}.moveToDest();
-                    case 16 % "do nothing"
+                    case {16, 17, 18} % "wafer"
+                        this.uiDeviceArrayWafer{dAxis - 15}.setDestCal(dVal);
+                        this.uiDeviceArrayWafer{dAxis - 15}.moveToDest();
+                    case 19 % do nothing
                        
                 end
             end
@@ -1873,8 +1952,9 @@ classdef LSI_Control < mic.Base
                             return
                         end
                     case {9, 10, 11, 12, 13, 14, 15} % Reticle
-                        retAxis = dAxis - 8;
                         
+                        % Use isready: ------------------------
+%                         retAxis = dAxis - 8;
 %                         if this.uiDeviceArrayReticle{retAxis}.getDevice().isReady()
 %                             fprintf('(LSI-control) scan: Reticle axis is ready\n');
 %                             isAtState = true;
@@ -1884,25 +1964,47 @@ classdef LSI_Control < mic.Base
 %                             return
 %                         end
                         
-                        
-                        dUnit =  this.uiDeviceArrayReticle{dAxis - 8}.getUnit().name;
-                        dCommandedDest = this.uiDeviceArrayReticle{dAxis - 8}.getDestCal(dUnit);
-                        dAxisPosition = this.uiDeviceArrayReticle{dAxis - 8}.getValCal(dUnit);
-                        dEps = abs(dCommandedDest - dAxisPosition);
+                        % Use eps tol ----------------------------
+                        dUnit           = this.uiDeviceArrayReticle{dAxis - 8}.getUnit().name;
+                        dCommandedDest  = this.uiDeviceArrayReticle{dAxis - 8}.getDestCal(dUnit);
+                        dAxisPosition   = this.uiDeviceArrayReticle{dAxis - 8}.getValCal(dUnit);
+                        dEps            = abs(dCommandedDest - dAxisPosition);
                         fprintf('Commanded destination: %0.3f, Actual pos: %0.3f, eps: %0.4f\n', ...
                             dCommandedDest, dAxisPosition, dEps);
                         dTolerance = 0.004; % scan unit assumed to be mm here
-%                         if ~this.uiDeviceArrayReticle{retAxis}.getDevice().isReady() || ...
-                         if       dEps > dTolerance
-                            
-                            fprintf('Reticle is within tolerance\n');
+                        if dEps > dTolerance
+                            fprintf('Reticle is not within tolerance\n');
                             isAtState = false;
                             return
-                         end
-                        isAtState = true;
+                        end
+    
+                    case {16, 17, 18}
                         
+                         % Use isready: ------------------------
+%                         wafAxis = dAxis - 15;
+%                         if this.uiDeviceArrayReticle{wafAxis}.getDevice().isReady()
+%                             fprintf('(LSI-control) scan: Wafer axis is ready\n');
+%                             isAtState = true;
+%                             return
+%                         else
+%                             isAtState = false;
+%                             return
+%                         end
 
-                     case 16 % "do nothing"
+                        % Use eps tol ----------------------------
+                        dUnit           = this.uiDeviceArrayWafer{dAxis - 15}.getUnit().name;
+                        dCommandedDest  = this.uiDeviceArrayWafer{dAxis - 15}.getDestCal(dUnit);
+                        dAxisPosition   = this.uiDeviceArrayWafer{dAxis - 15}.getValCal(dUnit);
+                        dEps            = abs(dCommandedDest - dAxisPosition);
+                        fprintf('Commanded destination: %0.3f, Actual pos: %0.3f, eps: %0.4f\n', ...
+                            dCommandedDest, dAxisPosition, dEps);
+                        dTolerance = 0.004; % scan unit assumed to be mm here
+                        if dEps > dTolerance
+                            fprintf('Wafer is not within tolerance\n');
+                            isAtState = false;
+                            return
+                        end
+                    case 19 % "do nothing"
                         isAtState = true;
                             return
                 end
@@ -1977,6 +2079,10 @@ classdef LSI_Control < mic.Base
                     
 %                     dAcquiredValue = this.apiWaferDoseMonitor.read(2);
                     dAcquiredValue = this.uiDoseMonitor.getValRaw();
+                    lAcquisitionFinished = ~this.lIsScanAcquiring;
+                    
+                case 7 % HS Simple Z
+                    dAcquiredValue = this.uiHSSimpleZ.getValRaw();
                     lAcquisitionFinished = ~this.lIsScanAcquiring;
                     
             end
@@ -2272,6 +2378,13 @@ classdef LSI_Control < mic.Base
 %% Build main figure
         function build(this)
             
+            
+            if ishghandle(this.hFigure)
+                % Bring to front
+                figure(this.hFigure);
+                return
+            end
+            
             % Main figure
             this.hFigure = figure(...
                     'name', 'Interferometer control',...
@@ -2283,15 +2396,15 @@ classdef LSI_Control < mic.Base
                     'Color', [0.7 0.73 0.73], ...
                     'Resize', 'off',...
                     'HandleVisibility', 'on',... % lets close all close the figure
-                    'Visible', 'on'...
-                   ...% 'CloseRequestFcn', @this.onCloseRequest ...
+                    'Visible', 'on',...
+                    'CloseRequestFcn', @this.onCloseRequest ...
                     );
                 
            % Axes:
            
            
            % Main Axes:
-           this.uitgAxes.build(this.hFigure, 880, 10, 860, 785);
+           this.uitgAxes.build(this.hFigure, 880, 215, 860, 885);
            this.hsaAxes.build(this.uitgAxes.getTabByName('Camera'), this.hFigure, 10, 10, 810, 720);
             
            
@@ -2305,7 +2418,7 @@ classdef LSI_Control < mic.Base
            
            this.uipFidAxisX.build(uitFid, dLeft1, dTop, 120, 20);
            this.uipFidAxisY.build(uitFid, dLeft2, dTop, 120, 20);
-           this.uiprLibraryFiducials.build(uitFid, dLeft3, 500, 340, 200);
+           this.uiprLibraryFiducials.build(uitFid, dLeft3, dTop, 340, 200);
            
            dTop = dTop + 60;
            this.uieFidX1Library.build(uitFid, dLeft1, dTop, 100, 20);
@@ -2335,7 +2448,8 @@ classdef LSI_Control < mic.Base
            this.uieFidTargetY.build(uitFid, dLeft1 + 110, dTop, 100, 20);
            this.uibFidGo.build(uitFid, dLeft1 + 230, dTop + 8, 120, 30);
            this.uibFidGo.setColor([0.9, 0.8, 0.8]);
-           this.uiprTargetCoordinates.build(uitFid, dLeft3, 185, 340, 200);
+           
+           this.uiprTargetCoordinates.build(uitFid, dLeft3, 500, 340, 200);
            
             % Stage panel:
             this.hpStageControls = uipanel(...
@@ -2345,7 +2459,7 @@ classdef LSI_Control < mic.Base
                 'FontWeight', 'Bold',...
                 'Clipping', 'on',...
                 'BorderWidth',0, ... 
-                'Position', [10 300 490 670] ...
+                'Position', [10 300 490 770] ...
             );
         
             % Scan control panel:
@@ -2356,13 +2470,13 @@ classdef LSI_Control < mic.Base
                 'FontWeight', 'Bold',...
                 'Clipping', 'on',...
                 'BorderWidth',0, ... 
-                'Position', [510 300 360 670] ...
+                'Position', [510 300 360 770] ...
                 );
         
             drawnow
         
             % Scan controls:
-            this.uitgScan.build(this.hFigure, 10, 10, 860, 280);
+            this.uitgScan.build(this.hFigure, 10, 815, 860, 280);
 
              % Scans:
             this.ss1D.build(this.uitgScan.getTabByIndex(1), 10, 10, 850, 230); 
@@ -2375,7 +2489,7 @@ classdef LSI_Control < mic.Base
             uitScanMonitor = this.uitgAxes.getTabByName('Scan monitor');
             hScanMonitorPanel = uipanel(uitScanMonitor, ...
                      'units', 'pixels', ...
-                     'Position', [1 620 560 100] ...
+                     'Position', [1 720 560 100] ...
                      );
             this.uiTextStatus.build(hScanMonitorPanel, 10, 10, 100, 30);
             this.uiTextTimeElapsed.build(hScanMonitorPanel, 250, 10, 100, 30);
@@ -2390,10 +2504,10 @@ classdef LSI_Control < mic.Base
                                  'XTick', [], 'YTick', []);     
             
             % Position recall:
-            this.uiSLHexapod.build(this.hpPositionRecall, 10, 390, 340, 188);
+            this.uiSLHexapod.build(this.hpPositionRecall, 10, 10, 340, 188);
 %             this.uiSLGoni.build(this.hpPositionRecall, 10, 200, 340, 188);
             this.uiSLReticle.build(this.hpPositionRecall, 10, 200, 340, 188);
-             this.uiSLReticleFine.build(this.hpPositionRecall, 10, 10, 340, 188);
+            this.uiSLReticleFine.build(this.hpPositionRecall, 10, 390, 340, 188);
             
             
             % Stage UI elements
@@ -2421,6 +2535,7 @@ classdef LSI_Control < mic.Base
 %                 dAxisPos = dAxisPos + this.dMultiAxisSeparation;
 %             end
 
+            % PPMac reticle and wafer
             this.uiCommDeltaTauPowerPmac.build(this.hpStageControls,  dLeft, dAxisPos - 7);
             dAxisPos = dAxisPos + 20;
             for k = 1:length(this.cReticleLabels)
@@ -2431,16 +2546,35 @@ classdef LSI_Control < mic.Base
                 end
                 dAxisPos = dAxisPos + this.dMultiAxisSeparation;
             end
+            
+            dAxisPos = dAxisPos + this.dMultiAxisSeparation/2;
+            for k = 1:length(this.cWaferLabels)
+                 this.uiDeviceArrayWafer{k}.build(this.hpStageControls, ...
+                    dLeft, dAxisPos);
+                dAxisPos = dAxisPos + this.dMultiAxisSeparation;
+            end
+            
             dAxisPos = dAxisPos + 15;
             % DMI/Wafer diode connect buttons and GetNumbers
+            
             this.uicommWaferDoseMonitor.build(this.hpStageControls,  dLeft, dAxisPos - 7);
+            
+             this.uicommMFDriftMonitor.build(this.hpStageControls,  dLeft + 230, dAxisPos - 7);
+             
+             
             dAxisPos = dAxisPos + 20;
+            dAxisPos = dAxisPos +  this.dMultiAxisSeparation/2;
+            
             this.uiDoseMonitor.build(this.hpStageControls, dLeft, dAxisPos);
-            dAxisPos = dAxisPos +  this.dMultiAxisSeparation;
+            
+            this.uiHSSimpleZ.build(this.hpStageControls, dLeft + 230, dAxisPos);
+            
+            
+            
             dAxisPos = dAxisPos +  this.dMultiAxisSeparation;
             
             
-            this.uicommMFDriftMonitor.build(this.hpStageControls,  dLeft, dAxisPos - 7);
+           
             dAxisPos = dAxisPos + 25;
             this.uiDMIChannels{1}.build(this.hpStageControls, dLeft, dAxisPos);
             this.uiDMIChannels{2}.build(this.hpStageControls, dLeft + 230, dAxisPos);
@@ -2453,7 +2587,7 @@ classdef LSI_Control < mic.Base
                 'FontWeight', 'Bold',...
                 'Clipping', 'on',...
                 'BorderWidth',0, ... 
-                'Position', [880 800 860 170] ...
+                'Position', [880 900 860 170] ...
             );
             
             % Camera UI elements
@@ -2508,8 +2642,9 @@ classdef LSI_Control < mic.Base
     methods (Access = protected)
         
         function onCloseRequest(this, src, evt)
-%             delete(this.hFigure);
-%             this.hFigure = [];
+            if ishandle(this.hFigure)
+                delete(this.hFigure);
+            end
         end
         
       
