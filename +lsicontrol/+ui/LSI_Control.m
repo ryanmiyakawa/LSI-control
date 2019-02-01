@@ -67,11 +67,15 @@ classdef LSI_Control < mic.Base
         uiButtonFocus
         uiButtonStop
         uiButtonSaveImage
+        uiButtonSetBackground
         uipBinning
         
         uipbExposureProgress
         
         uieImageName
+        
+        dBackgroundImage = zeros(650)
+        uicbSubtractBackground
         
         % Configuration
         uicHexapodConfigs
@@ -110,9 +114,41 @@ classdef LSI_Control < mic.Base
         
         haScanOutput
         
+        
+        % Fiducialization
+        uipFidAxisX
+        uipFidAxisY
+        
+        uieFidX1Measured
+        uieFidY1Measured
+        uieFidX2Measured
+        uieFidY2Measured
+        uieFidX3Measured
+        uieFidY3Measured
+        
+        
+        uieFidX1Library
+        uieFidY1Library
+        uieFidX2Library
+        uieFidY2Library
+        uieFidX3Library
+        uieFidY3Library
+        
+        uieFidTargetX
+        uieFidTargetY
+        
+        uibFidGo
+        uibFidSet
+        
+        uiprLibraryFiducials
+        uiprTargetCoordinates
+        
+        dFidRot = []
+        fhFidTransform = @(x) x
+        
         % Scans:
         uitgScan
-        ceTabList = {'1D-scan', '2D-scan', '3D-scan', 'LSI P/S', 'LSI P/S Cont. Correction'}
+        ceTabList = {'1D-scan', '2D-scan', '3D-scan', '1D Coupled', '2D Coupled'}
         
         
         % Scan setups
@@ -184,8 +220,10 @@ classdef LSI_Control < mic.Base
                         'Ret Rx', ...
                         'Ret Ry', ...
                         'Ret Fine X', ...
-                        'Ret Fine Y'};
-        ceScanOutputLabels = {'Image capture', 'Image intensity', 'Line Contrast', 'Line Pitch', 'Pause 2s', 'Wafer Diode'};
+                        'Ret Fine Y', ...
+                        'Do Nothing'};
+        ceScanOutputLabels = {'Image capture', 'Image intensity', ...
+            'Background diff', 'Line Pitch', 'Pause 2s', 'Wafer Diode'};
     end
     
     properties (Access = private)
@@ -532,6 +570,14 @@ classdef LSI_Control < mic.Base
                 'fhDirectCallback', @this.onSaveImage ...
             );
         
+            this.uiButtonSetBackground = mic.ui.common.Button(...
+                'cText', 'Set Bkg Image', ...
+                'fhDirectCallback', @this.onSetBackground ...
+            );
+        
+            this.uicbSubtractBackground = mic.ui.common.Checkbox('cLabel', 'Subtract background');        
+        
+        
             this.uieImageName = mic.ui.common.Edit(...
                 'cLabel', 'Image name' ...
             );
@@ -577,6 +623,87 @@ classdef LSI_Control < mic.Base
             
             
            
+            % Fiducialized moves:
+            
+            this.uipFidAxisX = mic.ui.common.Popup(...
+                'cLabel', 'Axis 1', ...
+                'ceOptions', this.ceScanAxisLabels, ...
+                'u8Selected', 9, ...
+                'lShowLabel', true ...
+            );
+            this.uipFidAxisY = mic.ui.common.Popup(...
+                'cLabel', 'Axis 2', ...
+                'ceOptions', this.ceScanAxisLabels, ...
+                'u8Selected', 10, ...
+                'lShowLabel', true ...
+            );
+        
+           
+            
+            this.uieFidX1Measured = mic.ui.common.Edit(...
+                'cLabel', 'Fiducial 1 Meas. X', 'cType', 'd' ...
+            );
+            this.uieFidY1Measured = mic.ui.common.Edit(...
+                'cLabel', 'Fiducial 1 Meas. Y', 'cType', 'd' ...
+            );
+            this.uieFidX2Measured = mic.ui.common.Edit(...
+                'cLabel', 'Fiducial 2 Meas. X', 'cType', 'd' ...
+            );
+            this.uieFidY2Measured = mic.ui.common.Edit(...
+                'cLabel', 'Fiducial 2 Meas. Y', 'cType', 'd' ...
+            );
+            this.uieFidX3Measured = mic.ui.common.Edit(...
+                'cLabel', 'Fiducial 3 Meas. X', 'cType', 'd' ...
+            );
+            this.uieFidY3Measured = mic.ui.common.Edit(...
+                'cLabel', 'Fiducial 3 Meas. Y', 'cType', 'd' ...
+            );
+            
+            this.uieFidX1Library = mic.ui.common.Edit(...
+                'cLabel', 'Fiducial 1 Lib. X', 'cType', 'd' ...
+            );
+            this.uieFidY1Library = mic.ui.common.Edit(...
+                'cLabel', 'Fiducial 1 Lib. Y', 'cType', 'd' ...
+            );
+            this.uieFidX2Library = mic.ui.common.Edit(...
+                'cLabel', 'Fiducial 2 Lib. X', 'cType', 'd' ...
+            );
+            this.uieFidY2Library = mic.ui.common.Edit(...
+                'cLabel', 'Fiducial 2 Lib. Y', 'cType', 'd' ...
+            );
+            this.uieFidX3Library = mic.ui.common.Edit(...
+                'cLabel', 'Fiducial 3 Lib. X', 'cType', 'd' ...
+            );
+            this.uieFidY3Library = mic.ui.common.Edit(...
+                'cLabel', 'Fiducial 3 Lib. Y', 'cType', 'd' ...
+            );
+            
+            this.uieFidTargetX = mic.ui.common.Edit(...
+                'cLabel', 'Library Target X', 'cType', 'd' ...
+            );
+            this.uieFidTargetY = mic.ui.common.Edit(...
+                'cLabel', 'Library Target Y', 'cType', 'd' ...
+            );
+            
+            this.uibFidGo = mic.ui.common.Button(...
+                'cText', 'Make Library Move' , 'fhDirectCallback', @(src,evt)this.moveFiducialized ...
+            );
+            this.uibFidSet = mic.ui.common.Button(...
+                'cText', 'Set Fiducials' , 'fhDirectCallback', @(src,evt)this.setFiducial ...
+            );
+        
+            
+            this.uiprLibraryFiducials = mic.ui.common.PositionRecaller(...
+                'cConfigPath', fullfile(this.cAppPath, '+config'), ...
+                'cName', 'Fiducial coordinate systems', ...
+                'hGetCallback', @this.getLibraryFiducialCoords, ...
+                'hSetCallback', @this.setLibraryFiducialCoords);
+            
+            this.uiprTargetCoordinates = mic.ui.common.PositionRecaller(...
+                'cConfigPath', fullfile(this.cAppPath, '+config'), ...
+                'cName', 'Library moves', ...
+                'hGetCallback', @this.getLibraryTargetCoordinates, ...
+                'hSetCallback', @this.setLibraryTargetCoordinates);
             
             % Scans:
             this.ss1D = mic.ui.common.ScanSetup( ...
@@ -672,7 +799,8 @@ classdef LSI_Control < mic.Base
             this.uitgScan = mic.ui.common.Tabgroup('ceTabNames', this.ceTabList, ...
                                                     'fhDirectCallback', ceScanCallbackTriggers);
             % Axes tab group:
-            this.uitgAxes = mic.ui.common.Tabgroup('ceTabNames', {'Camera', 'Scan monitor', 'Scan output'});
+            this.uitgAxes = mic.ui.common.Tabgroup('ceTabNames', ...
+                {'Camera', 'Scan monitor', 'Scan output', 'Fiducialized moves'});
            
             
             % Scan progress text elements:
@@ -919,7 +1047,13 @@ classdef LSI_Control < mic.Base
         % Callback for what to do when image is ready from camera
         function onCameraImageReady(this, data)
             
-            this.hsaAxes.imagesc(data);
+            if this.uicbSubtractBackground.get() && ...
+                    size(data, 1) == size(this.dBackgroundImage, 1) && ...
+                        size(data, 2) == size(this.dBackgroundImage, 2)
+                this.hsaAxes.imagesc(data - this.dBackgroundImage);
+            else
+                this.hsaAxes.imagesc(data);
+            end
             
             % If focusing, don't bother to reset buttons or save image:
             if this.apiCamera.lIsFocusing
@@ -949,7 +1083,7 @@ classdef LSI_Control < mic.Base
             % update image name:
             [path, nPNGs] = this.getDataSubdirectoryPath();
             
-            cFileName = fullfile(path, sprintf('%0.3d.png', nPNGs + 1));
+            cFileName = fullfile(path, sprintf('%0.4d.png', nPNGs + 1));
             [~, name, ext] = fileparts(cFileName);
             
             this.uieImageName.set([name, ext]);
@@ -987,7 +1121,7 @@ classdef LSI_Control < mic.Base
             this.uiButtonStop.setColor(this.dDisableColor);
             this.uipbExposureProgress.set(0);
             
-            
+           
             switch u8mode
                 case this.U8CAMERA_MODE_ACQUIRE
                     this.uipbExposureProgress.setColor([.4, .4, .8]);
@@ -996,8 +1130,9 @@ classdef LSI_Control < mic.Base
                 case this.U8CAMERA_MODE_FOCUS
                     this.uipbExposureProgress.setColor([.9, .74, .9]);
                     this.apiCamera.startFocus();
-                    
             end
+            
+            % When image is ready, it will be handled by this.onCameraImageReady
         end
         
         % Call this to abort acquisition or focus gracefully.
@@ -1047,7 +1182,7 @@ classdef LSI_Control < mic.Base
                 mkdir(thisSeriesPath);
             end
             
-            cFileName = sprintf('%s-%0.3d-%0.3d', datestr(now,'yyyymmdd'), this.dImageSeriesNumber, dIdx);
+            cFileName = sprintf('%s-%0.3d-%0.4d', datestr(now,'yyyymmdd'), this.dImageSeriesNumber, dIdx);
                         
             this.saveAndLogImage(thisSeriesPath, seriesPath, cFileName, dImg);
         end
@@ -1072,9 +1207,12 @@ classdef LSI_Control < mic.Base
             this.uipbExposureProgress.set(0);
             this.uipbExposureProgress.setColor([.95, .95, .95]);
             this.uiButtonSaveImage.setColor(this.dInactiveColor);
-            
-            
-            
+        end
+        
+        
+        function onSetBackground(this, ~, ~)
+            this.dBackgroundImage = this.apiCamera.dCurrentImage;
+            this.uiButtonSetBackground.setColor([.6, .6, .7]);
         end
         
         % get data subdirectory
@@ -1135,25 +1273,14 @@ classdef LSI_Control < mic.Base
             end
             
             % Add Reticle coordinates:
-            if isempty(this.apiReticle)
-                stLog.reticleCX = 'off';
-                stLog.reticleCY = 'off';
-                stLog.reticleCZ = 'off';
-                stLog.reticleRx = 'off';
-                stLog.reticleRy = 'off';
-                stLog.reticleFX = 'off';
-                stLog.reticleFY = 'off';
-            else 
-                dHexapodPositions = this.getHexapodRaw();
-                stLog.reticleCX = sprintf('%0.6f', dHexapodPositions(1));
-                stLog.reticleCY = sprintf('%0.6f', dHexapodPositions(2));
-                stLog.reticleCZ = sprintf('%0.6f', dHexapodPositions(3));
-                stLog.reticleRx = sprintf('%0.6f', dHexapodPositions(4));
-                stLog.reticleFX = sprintf('%0.6f', dHexapodPositions(5));
-                stLog.reticleFY = sprintf('%0.6f', dHexapodPositions(6));
-            end
-            
-            
+
+            stLog.reticleCX = this.uiDeviceArrayReticle{1}.getDestRaw();
+            stLog.reticleCY = this.uiDeviceArrayReticle{2}.getDestRaw();
+            stLog.reticleCZ = this.uiDeviceArrayReticle{3}.getDestRaw();
+            stLog.reticleRx = this.uiDeviceArrayReticle{4}.getDestRaw();
+            stLog.reticleRy = this.uiDeviceArrayReticle{5}.getDestRaw();
+            stLog.reticleFX = this.uiDeviceArrayReticle{6}.getDestRaw();
+            stLog.reticleFY = this.uiDeviceArrayReticle{7}.getDestRaw();
             
             % Add temperature and exposure times:
             if isempty(this.apiCamera)
@@ -1163,6 +1290,20 @@ classdef LSI_Control < mic.Base
                 stLog.cameraTemp = sprintf('%0.1f', this.apiCamera.getTemperature());
                 stLog.cameraExposureTime = sprintf('%0.4f', this.apiCamera.getExposureTime()); 
             end
+            
+            % Add DMI reticle x and y values:
+            if isempty(this.apiMFDriftMonitor)
+                stLog.DMIRetX = 'off';
+                stLog.DMIRetY = 'off';
+                stLog.HSZ = 'off';
+            else
+                 this.apiMFDriftMonitor.forceUpdate();
+                 stLog.DMIRetX = sprintf('%0.10f', this.apiMFDriftMonitor.getDMIValue(1)); 
+                 stLog.DMIRetY = sprintf('%0.10f', this.apiMFDriftMonitor.getDMIValue(2)); 
+                 stLog.HSZ = sprintf('%0.10f', this.apiMFDriftMonitor.getHeightSensorValue(9)); 
+            end
+           
+            
         end
         
         
@@ -1237,19 +1378,147 @@ classdef LSI_Control < mic.Base
             fwrite(fid, cWriteStr);
             fclose(fid);
 
+            % Prepare background subtracted image:
+            if size(dImg,1) == size(this.dBackgroundImage,1) && size(dImg,2) == size(this.dBackgroundImage,2)
+                dImgBk = dImg - this.dBackgroundImage;
+            else
+                dImgBk = dImg;
+            end
+            
             % Save .mat file
             [~, fl, ext] = fileparts(cFileName);
-            save(fullfile(cSubDirPath, [fl '.mat']), 'stLog', 'dImg');
+            save(fullfile(cSubDirPath, [fl '.mat']), 'stLog', 'dImg', 'dImgBk');
             
-            imwrite(dImg, fullfile(cSubDirPath, cFileName), 'png');
+            % Scale dImg to 255 for png
+            dImgSc = floor(dImg/256);
+            imwrite(dImgSc, fullfile(cSubDirPath, cFileName), 'png');
         end
         
         function onBinningChange(this, src, ~)
             this.apiCamera.setBinning(src.getSelectedValue);
         end
         
+ %% FIDUCIALIZED MOVES
+
+        function setFiducial(this)
+            % Get displacement vectors:
+            dX1L = this.uieFidX1Library.get();
+            dY1L = this.uieFidY1Library.get();
+            dX2L = this.uieFidX2Library.get();
+            dY2L = this.uieFidY2Library.get();
+            dX3L = this.uieFidX3Library.get();
+            dY3L = this.uieFidY3Library.get();
+            dX1M = this.uieFidX1Measured.get();
+            dY1M = this.uieFidY1Measured.get();
+            dX2M = this.uieFidX2Measured.get();
+            dY2M = this.uieFidY2Measured.get();
+            dX3M = this.uieFidX3Measured.get();
+            dY3M = this.uieFidY3Measured.get();
+            
+            % Use point 1 as origin:
+            
+            % Fid basis in measured coordinates
+            dBetaM1 = [dX2M - dX1M; dY2M - dY1M];
+            dBetaM2 = [dX3M - dX1M; dY3M - dY1M];
+            % Fid origin in measured coordinates
+            dOriginM = [dX1M;dY1M];
+            
+            % Fid basis in lib coordinates
+            dBetaL1 = [dX2L - dX1L; dY2L - dY1L];
+            dBetaL2 = [dX3L - dX1L; dY3L - dY1L];
+             % Fid origin in library coordinates
+            dOriginL = [dX1L;dY1L];
+            
+            % Converts lib coordinates to fid basis:
+            TL2F = inv([dBetaL1,dBetaL2]);
+            
+            % Converts measured coordinates to fid basis:
+            TM2F = inv([dBetaM1,dBetaM2]);
+            
+            % Takes library coordinates, shifts, and writes in fid basis:
+            fhLib2Fid = @(X) TL2F*(X - dOriginL);
+            
+            % Takes Fid basis coordinates and returns measured coordinates:
+            fhFid2Meas = @(X) [dBetaM1,dBetaM2]*X;
+            
+            
+            this.fhFidTransform = @(X) fhFid2Meas(fhLib2Fid(X)) + dOriginM;
+%             this.fhFidTransform = @(X) (T*(X - [dX1L; dY1L]))' * [dBetaL1, dBetaL2] + [dX1M, dY1M];
+               
+            this.uibFidGo.setColor([0.8, 0.9, 0.8]);
+        end
+        
+        function moveFiducialized(this)
+            
+            dXLib = this.uieFidTargetX.get(); 
+            dYLib = this.uieFidTargetY.get();
+            
+            dTransformCoords = this.fhFidTransform([dXLib; dYLib]);
+            
+            % Generate state with these coords:
+            u8ScanAxisIdx = [(this.uipFidAxisX.getSelectedIndex()), ...
+                (this.uipFidAxisY.getSelectedIndex())];
+            
+            stTargetState = struct('axes', u8ScanAxisIdx, 'values', dTransformCoords');
+            this.setScanAxisDevicesToState(stTargetState);
+        end
+
+ 
  %% POSITION RECALL Stage direct access get/set
 
+        function positions = getLibraryFiducialCoords(this)
+            positions = [ ...
+                double(this.uipFidAxisX.getSelectedIndex()), ...
+                double(this.uipFidAxisY.getSelectedIndex()), ...
+                this.uieFidX1Measured.get(), ...
+                this.uieFidY1Measured.get(), ...
+                this.uieFidX2Measured.get(), ...
+                this.uieFidY2Measured.get(), ...
+                ...
+                this.uieFidX1Library.get(), ...
+                this.uieFidY1Library.get(), ...
+                this.uieFidX2Library.get(), ...
+                this.uieFidY2Library.get(), ...
+                ...
+                this.uieFidX3Library.get(), ...
+                this.uieFidY3Library.get(), ...
+                this.uieFidX3Measured.get(), ...
+                this.uieFidY3Measured.get() ...
+            ];
+        end
+        function setLibraryFiducialCoords(this, positions)
+            this.uipFidAxisX.setSelectedIndex(uint8(positions(1)));
+            this.uipFidAxisY.setSelectedIndex(uint8(positions(2)));
+            this.uieFidX1Measured.set(positions(3));
+            this.uieFidY1Measured.set(positions(4));
+            this.uieFidX2Measured.set(positions(5));
+            this.uieFidY2Measured.set(positions(6));
+            this.uieFidX1Library.set(positions(7));
+            this.uieFidY1Library.set(positions(8));
+            this.uieFidX2Library.set(positions(9));
+            this.uieFidY2Library.set(positions(10));
+            
+            this.uieFidX3Library.set(positions(11));
+            this.uieFidY3Library.set(positions(12));
+            this.uieFidX3Measured.set(positions(13));
+            this.uieFidY3Measured.set(positions(14));
+        end
+        
+        function positions = getLibraryTargetCoordinates(this)
+            positions = [ ...
+                this.uieFidTargetX.get(), ...
+                this.uieFidTargetY.get() ...
+            ];
+        end
+        function setLibraryTargetCoordinates(this, positions)
+            this.uieFidTargetX.set(positions(1));
+            this.uieFidTargetY.set(positions(2));
+            
+            % Call make lib move button callback
+            this.moveFiducialized();
+        end
+        
+        
         % -------------------------*****************----------------------
         % Need to implement these methods:
         function positions = getReticleCoarseRaw(this)
@@ -1419,6 +1688,9 @@ classdef LSI_Control < mic.Base
                         dUnit =  this.uiDeviceArrayReticle{dAxis - 8}.getUnit().name;
                         dInitialState.values(k) = this.uiDeviceArrayReticle{dAxis - 8}.getDestCal(dUnit);
                         
+                    case 16 % "do nothing"
+                        dInitialState.values(k) = 1;
+                        
                 end
             end
             
@@ -1458,7 +1730,7 @@ classdef LSI_Control < mic.Base
             % Set series number:
             
             switch u8OutputIdx
-                case {1, 3, 4} % Any time image series should be saved
+                case {1, 4} % Any time image series should be saved
                    if isempty(this.apiCamera)
                        msgbox('No Camera available for image acquisition')
                        return
@@ -1481,7 +1753,7 @@ classdef LSI_Control < mic.Base
             fhIsAcquired    = @(stUnit, stState) this.scanIsAcquired(stState, u8OutputIdx);
             fhOnComplete    = @(stUnit, stState) this.onScanComplete(dInitialState, fhSetState);
             fhOnAbort       = @(stUnit, stState) this.onScanAbort(dInitialState, fhSetState, fhIsAtState);
-            dDelay          = 0.2;
+            dDelay          = 0.05;
             % Create a new scan:
             this.scanHandler = mic.Scan(this.clock, ...
                                         stRecipe, ...
@@ -1566,6 +1838,8 @@ classdef LSI_Control < mic.Base
                     case {9, 10, 11, 12, 13, 14, 15} % Reticle
                         this.uiDeviceArrayReticle{dAxis - 8}.setDestCal(dVal);
                         this.uiDeviceArrayReticle{dAxis - 8}.moveToDest();
+                    case 16 % "do nothing"
+                       
                 end
             end
             
@@ -1600,19 +1874,36 @@ classdef LSI_Control < mic.Base
                     case {9, 10, 11, 12, 13, 14, 15} % Reticle
                         retAxis = dAxis - 8;
                         
+%                         if this.uiDeviceArrayReticle{retAxis}.getDevice().isReady()
+%                             fprintf('(LSI-control) scan: Reticle axis is ready\n');
+%                             isAtState = true;
+%                             return
+%                         else
+%                             isAtState = false;
+%                             return
+%                         end
+                        
+                        
                         dUnit =  this.uiDeviceArrayReticle{dAxis - 8}.getUnit().name;
                         dCommandedDest = this.uiDeviceArrayReticle{dAxis - 8}.getDestCal(dUnit);
                         dAxisPosition = this.uiDeviceArrayReticle{dAxis - 8}.getValCal(dUnit);
                         dEps = abs(dCommandedDest - dAxisPosition);
                         fprintf('Commanded destination: %0.3f, Actual pos: %0.3f, eps: %0.4f\n', ...
                             dCommandedDest, dAxisPosition, dEps);
-                        dTolerance = 0.001; % scan unit assumed to be mm here
-                        if ~this.uiDeviceArrayReticle{retAxis}.getDevice().isReady() || ...
-                                dEps > dTolerance
+                        dTolerance = 0.004; % scan unit assumed to be mm here
+%                         if ~this.uiDeviceArrayReticle{retAxis}.getDevice().isReady() || ...
+                         if       dEps > dTolerance
                             
+                            fprintf('Reticle is within tolerance\n');
                             isAtState = false;
                             return
-                        end
+                         end
+                        isAtState = true;
+                        
+
+                     case 16 % "do nothing"
+                        isAtState = true;
+                            return
                 end
             end
             
@@ -1633,10 +1924,24 @@ classdef LSI_Control < mic.Base
             % outputIdx: {'Image capture', 'Image intensity', 'Line Contrast', 'Line Pitch', 'Pause 2s'}
             switch outputIdx
                 case {1, 2, 3, 4} % Image caputre
+                    
+                    % If this a 3D scan using image capture, assume new series 
+                    % should be created with each move of top axis
+                    if length(u8ScanAxisIdx) == 3 && double(u8Idx) ~= 1
+                        % Check if axis 1 has changed:
+                        if this.stLastScanState.values(1) ~= stateList{u8Idx}.values(1)
+                            % update series number:
+                            this.dImageSeriesNumber = this.dImageSeriesNumber + 1;
+                            
+                            
+                        end
+                        
+                    end
+                    
                      % flag that a "scan acquisition" has commenced:
                     this.lIsScanAcquiring = true;
             
-                    this.onAcquire();
+                    this.onStartCamera(this.U8CAMERA_MODE_ACQUIRE);
                     % This will call image capture and then save
                     
                 case 5 % pause
@@ -1646,6 +1951,8 @@ classdef LSI_Control < mic.Base
                     this.lIsScanAcquiring = false;
             end
             
+            % Set this state as the last scan state:
+            this.stLastScanState = stateList{u8Idx};
             
         end
         
@@ -1667,7 +1974,8 @@ classdef LSI_Control < mic.Base
                     lAcquisitionFinished = ~this.lIsScanAcquiring;
                 case 6 % wafer dose diode
                     
-                    dAcquiredValue = this.apiWaferDoseMonitor.read(2);
+%                     dAcquiredValue = this.apiWaferDoseMonitor.read(2);
+                    dAcquiredValue = this.uiDoseMonitor.getValRaw();
                     lAcquisitionFinished = ~this.lIsScanAcquiring;
                     
             end
@@ -1682,11 +1990,17 @@ classdef LSI_Control < mic.Base
                         dImg = this.apiCamera.getImage();
                         dAcquiredValue = sum(dImg(:));
                         
-                    case 3 % Line Contrast
+                    case 3 % Integrated background diff
                         dImg = this.apiCamera.getImage();
                         
+                        if this.uicbSubtractBackground.get() && ...
+                                size(dImg, 1) == size(this.dBackgroundImage, 1) && ...
+                                size(dImg, 2) == size(this.dBackgroundImage, 2)
+                            dImg = dImg - this.dBackgroundImage;
+                        end
+                        
                         % Get contrast here:
-                        dAcquiredValue = sum(dImg(:));
+                        dAcquiredValue = sum(abs(dImg(:)));
                     case 4 % Line pitch
                         dImg = this.apiCamera.getImage();
                         
@@ -1785,6 +2099,20 @@ classdef LSI_Control < mic.Base
                     this.dScanOutput(dYidx, dXidx) = dAcquiredValue; %#ok<FNDSB>
                     
                     h = imagesc(this.haScanOutput, this.ceScanCoordinates{1}, this.ceScanCoordinates{2}, (this.dScanOutput));
+                    
+                    try
+                    dMn = min(this.dScanOutput(~isnan(this.dScanOutput(:))));
+                    dMx = max(this.dScanOutput(~isnan(this.dScanOutput(:))));
+                    if (~isempty(dMn) && ~isempty(dMx))
+                        this.haScanOutput.CLim = [dMn, dMx];
+                    else
+                        this.haScanOutput.CLim = [0, 1];
+                    end
+                    
+                    catch
+                        fprintf(lasterr);
+                    end
+                    
                     this.haScanOutput.YDir = 'normal';
                     h.HitTest = 'off';
                     this.haScanOutput.ButtonDownFcn = @(src, evt) this.handleScanOutputClick(evt, 2);
@@ -1948,11 +2276,15 @@ classdef LSI_Control < mic.Base
                     'name', 'Interferometer control',...
                     'Units', 'pixels',...
                     'Position', [10 10 this.dWidth this.dHeight],...
-                    'handlevisibility','off',... %out of reach gcf
                     'numberTitle','off',...
                     'Toolbar','none',...
                     'Menubar','none', ...
-                    'Color', [0.7 0.73 0.73]);
+                    'Color', [0.7 0.73 0.73], ...
+                    'Resize', 'off',...
+                    'HandleVisibility', 'on',... % lets close all close the figure
+                    'Visible', 'on'...
+                   ...% 'CloseRequestFcn', @this.onCloseRequest ...
+                    );
                 
            % Axes:
            
@@ -1961,7 +2293,49 @@ classdef LSI_Control < mic.Base
            this.uitgAxes.build(this.hFigure, 880, 10, 860, 785);
            this.hsaAxes.build(this.uitgAxes.getTabByName('Camera'), this.hFigure, 10, 10, 810, 720);
             
-                
+           
+           % Fiducialization
+           drawnow
+           dLeft1 = 20;
+           dLeft2 = 270;
+           dLeft3 = 505;
+           dTop = 30;
+           uitFid = this.uitgAxes.getTabByName('Fiducialized moves');
+           
+           this.uipFidAxisX.build(uitFid, dLeft1, dTop, 120, 20);
+           this.uipFidAxisY.build(uitFid, dLeft2, dTop, 120, 20);
+           this.uiprLibraryFiducials.build(uitFid, dLeft3, 500, 340, 200);
+           
+           dTop = dTop + 60;
+           this.uieFidX1Library.build(uitFid, dLeft1, dTop, 100, 20);
+           this.uieFidY1Library.build(uitFid, dLeft1 + 110, dTop, 100, 20);
+           this.uieFidX2Library.build(uitFid, dLeft2, dTop, 100, 20);
+           this.uieFidY2Library.build(uitFid, dLeft2 + 110, dTop, 100, 20);
+           
+           dTop = dTop + 40;
+           this.uieFidX1Measured.build(uitFid, dLeft1, dTop, 100, 20);
+           this.uieFidY1Measured.build(uitFid, dLeft1 + 110, dTop, 100, 20);
+           this.uieFidX2Measured.build(uitFid, dLeft2, dTop, 100, 20);
+           this.uieFidY2Measured.build(uitFid, dLeft2 + 110, dTop, 100, 20);
+           
+            dTop = dTop + 60;
+           this.uieFidX3Library.build(uitFid, dLeft1, dTop, 100, 20);
+           this.uieFidY3Library.build(uitFid, dLeft1 + 110, dTop, 100, 20);
+           
+           dTop = dTop + 40;
+           this.uieFidX3Measured.build(uitFid, dLeft1, dTop, 100, 20);
+           this.uieFidY3Measured.build(uitFid, dLeft1 + 110, dTop, 100, 20);
+           
+           this.uibFidSet.build(uitFid, dLeft2 + 20, dTop - 13, 150, 30);
+           
+           dLeft1 = dLeft1 + 55;
+           dTop = dTop + 260;
+           this.uieFidTargetX.build(uitFid, dLeft1, dTop, 100, 20);
+           this.uieFidTargetY.build(uitFid, dLeft1 + 110, dTop, 100, 20);
+           this.uibFidGo.build(uitFid, dLeft1 + 230, dTop + 8, 120, 30);
+           this.uibFidGo.setColor([0.9, 0.8, 0.8]);
+           this.uiprTargetCoordinates.build(uitFid, dLeft3, 185, 340, 200);
+           
             % Stage panel:
             this.hpStageControls = uipanel(...
                 'Parent', this.hFigure,...
@@ -1984,7 +2358,7 @@ classdef LSI_Control < mic.Base
                 'Position', [510 300 360 670] ...
                 );
         
-
+            drawnow
         
             % Scan controls:
             this.uitgScan.build(this.hFigure, 10, 10, 860, 280);
@@ -2087,15 +2461,16 @@ classdef LSI_Control < mic.Base
             
             this.uiCommPIMTECamera.build    (this.hpCameraControls, 10,  15);
             
-            this.uipBinning.build           (this.hpCameraControls, 545, 40, 70, 30);
-            this.uiButtonFocus.build        (this.hpCameraControls, 630, 50, 60,  30);
-            this.uiButtonAcquire.build      (this.hpCameraControls, 710, 50, 60,  30);
-            this.uiButtonStop.build         (this.hpCameraControls, 790, 50, 60,  30);
+            this.uipBinning.build           (this.hpCameraControls, 545, 40, 70, 25);
+            this.uiButtonFocus.build        (this.hpCameraControls, 630, 50, 60,  25);
+            this.uiButtonAcquire.build      (this.hpCameraControls, 710, 50, 60,  25);
+            this.uiButtonStop.build         (this.hpCameraControls, 790, 50, 60,  25);
             
-            this.uieImageName.build         (this.hpCameraControls, 180 + 370, 95, 200, 25);
-            this.uiButtonSaveImage.build    (this.hpCameraControls, 400 + 370, 110, 80, 20);
+            this.uieImageName.build         (this.hpCameraControls, 180 + 370, 115, 200, 25);
+            this.uiButtonSaveImage.build    (this.hpCameraControls, 400 + 370, 130, 80, 20);
            
-            
+            this.uiButtonSetBackground.build(this.hpCameraControls,  630, 90, 95, 25);
+            this.uicbSubtractBackground.build(this.hpCameraControls, 730, 90, 120, 25);
             
             
             this.uipbExposureProgress.build(this.hpCameraControls, 10, 115);
@@ -2125,65 +2500,18 @@ classdef LSI_Control < mic.Base
         
 
         
-        
-        function delete(this)
-            this.saveStateToDisk();
-
-            this.deleteUi();
-        end
-        
-        function deleteUi(this)
-            % Stop the clock:
-            this.clock.stop();
-                        
-            for k = 1:length(this.cHexapodAxisLabels)
-                delete(this.uiDeviceArrayHexapod{k});
-            end
-            
-            delete(this.uiDeviceMode);
-            delete(this.uiDeviceAwesome);
-            delete(this.uiButtonUseDeviceData);
-            delete(this.uiToggleAll);
-            delete(this.clock);
-            
-        end
-        
-        function st = save(this)
-           st = struct();
-%            st.uiDeviceX = this.uiDeviceX.save();
-%            st.uiDeviceY = this.uiDeviceY.save();
-        end
-        
-        function load(this, st)
-%            this.uiDeviceX.load(st.uiDeviceX);
-%            this.uiDeviceY.load(st.uiDeviceY);
-        end
-        
     
     end
     
     
     methods (Access = protected)
         
-        function fileWatchHandler(this, src, directory, filename)
-            img = [];
-            path = [directory, '/', filename];
-            switch filename(end-2:end)
-                case {'png', 'bmp', 'jpg'}
-                    img = imread(path);
-                    
-                     
-                case 'spe'
-                    
-            end
-            
-            if length(size(img)) == 3
-                img = mean(img, 3);
-            end
-            this.hsaAxes.imagesc(img);
-            
-            
+        function onCloseRequest(this, src, evt)
+%             delete(this.hFigure);
+%             this.hFigure = [];
         end
+        
+      
         
         function onToggleAllChange(this, src, evt)
             
@@ -2196,7 +2524,7 @@ classdef LSI_Control < mic.Base
         end
         
         
-        function onButtonUseDeviceDataChange(this, src, evt)
+        function onButtonUseDeviceDataChange(this, src, ~)
             
             this.uiDeviceX.getValCalDisplay()
             this.uiDeviceY.getValCalDisplay()

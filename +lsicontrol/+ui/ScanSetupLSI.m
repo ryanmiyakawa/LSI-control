@@ -15,6 +15,9 @@ changed, passing a cell array of scanstates, the axis numbers of the active
 scans as defined in the uipopup, and the useDeltas boolean array to
 determine whether scans will be about the current axis value
 
+
+This overloaded version will create pairs of coupled axis motion
+
 %}
 
 classdef ScanSetupLSI < mic.ui.common.ScanSetup
@@ -78,51 +81,40 @@ classdef ScanSetupLSI < mic.ui.common.ScanSetup
             
             % Now need to build a list of states corresponding to the scan
             % ranges:
-            dNumScanStates = 0;
-            for k = 1:2:this.dScanAxes
-                dNumScanStates = dNumScanStates +  length(ceScanRanges{k}) * length(ceScanRanges{k + 1});
-            end
             ceScanStates = cell(0);
             
             switch this.dScanAxes/2
                 
                 case 1 % X-Y scan
                     % Axis 1
+                    numScanStates = min([length(ceScanRanges{1}), length(ceScanRanges{2})]);
                     
-                    for k = 1:length(ceScanRanges{1})
-                            ceScanStates{end + 1} = struct('indices', [k, 1], ...
+                    for k = 1:numScanStates
+                            ceScanStates{end + 1} = struct('indices', [k, k], ...
                                 'axes', u8ScanAxisIdx(1:2), ...
-                                'values',[ceScanRanges{1}(k), ceScanRanges{2}(1)]); %#ok<AGROW>
-                    end
-                    % Axis 2 in series:
-                     for k = 1:length(ceScanRanges{2})
-                            ceScanStates{end + 1} = struct('indices', [1, k], ...
-                                'axes', u8ScanAxisIdx(1:2), ...
-                                'values',[ceScanRanges{1}(1), ceScanRanges{2}(k)]); %#ok<AGROW>
+                                'values',[ceScanRanges{1}(k), ceScanRanges{2}(k)]); %#ok<AGROW>
                     end
                     
                 case 2 %Y-X scan with intermediate steps
-                    % Axis 1
+                    numScanStates1 = min([length(ceScanRanges{1}), length(ceScanRanges{2})]);
+                    numScanStates2 = min([length(ceScanRanges{3}), length(ceScanRanges{4})]);
                     
-                    for m = 1:length(ceScanRanges{2})
-                        for k = 1:length(ceScanRanges{1})
-                        
-                        
-                            ceScanStates{end + 1} = struct('indices', [k, m], ...
-                                'axes', u8ScanAxisIdx(1:2), ...
-                                'values',[ceScanRanges{1}(k), ceScanRanges{2}(m)]); %#ok<AGROW>
+                     for k = 1:numScanStates1
+                        for m = 1:numScanStates2
+                            if ~this.uicbRaster.get() || isodd(k)
+                                kidx = k;
+                                midx = m;
+                                
+                            else % raster direction
+                                kidx = k;
+                                midx = length(ceScanRanges{2}) - m + 1;
+                            end
+                            ceScanStates{end + 1} = struct('indices', [kidx, kidx, midx, midx], 'axes', u8ScanAxisIdx, 'values',...
+                                    [ceScanRanges{1}(kidx), ceScanRanges{2}(kidx), ceScanRanges{3}(midx), ceScanRanges{4}(midx)]); %#ok<AGROW>
                         end
                     end
                     
-                    % Axis 2 in series:
-                    for m = 1:length(ceScanRanges{4})
-                        for k = 1:length(ceScanRanges{3})
-                         
-                            ceScanStates{end + 1} = struct('indices', [m, k], ...
-                                'axes', u8ScanAxisIdx(1:2), ...
-                                'values',[ceScanRanges{4}(m), ceScanRanges{3}(k)]); %#ok<AGROW>
-                         end
-                    end
+                   
                     
             end
        end
@@ -136,7 +128,7 @@ classdef ScanSetupLSI < mic.ui.common.ScanSetup
             
             cAxisNames = this.ceScanAxisLabels(u8ScanAxisIdx);
             if ~isempty(ceScanStates)
-                this.fhOnScan(ceScanStates, u8ScanAxisIdx(1:2), lUseDeltas, u8OutputIdx, cAxisNames);
+                this.fhOnScan(ceScanStates, u8ScanAxisIdx, lUseDeltas, u8OutputIdx, cAxisNames);
             else
                 msgbox('No states to scan, check scan parameters');
             end
@@ -155,7 +147,7 @@ classdef ScanSetupLSI < mic.ui.common.ScanSetup
             % callback:
             [ceScanStates, u8ScanAxisIdx, lUseDeltas] = this.buildScanStateArray();
             cAxisNames = this.ceScanAxisLabels(u8ScanAxisIdx);
-            this.fhOnScanChangeParams(ceScanStates, u8ScanAxisIdx(1:2), lUseDeltas, cAxisNames);
+            this.fhOnScanChangeParams(ceScanStates, u8ScanAxisIdx, lUseDeltas, cAxisNames);
        end
         
        
@@ -193,7 +185,7 @@ classdef ScanSetupLSI < mic.ui.common.ScanSetup
             dTop = dTop + 3*dPad;
              
             % Build only if there is more than one axis
- 
+            this.uicbRaster.build(this.hPanel, 250, dTop + 2, 70, 25);
             this.uibStartScan.build(this.hPanel, 140, dTop - 10, 45, 30);
             this.uipOutput.build(this.hPanel, 10, dTop - 20, 120, 40);
             this.uibStopScan.build(this.hPanel, 195, dTop - 10, 45, 30);
