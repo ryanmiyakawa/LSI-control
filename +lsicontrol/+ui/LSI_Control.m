@@ -467,7 +467,7 @@ classdef LSI_Control < mic.Base
                
                stConfigs(5).fhGet = @() this.hardware.getDeltaTauPowerPmac().getTiltYReticleCoarse();
                stConfigs(5).fhSet = @(dVal) this.hardware.getDeltaTauPowerPmac().setTiltYReticleCoarse(dVal);
-               stConfigs(6).fhIsReady = @() ~this.hardware.getDeltaTauPowerPmac().getIsStartedReticleCoarseXYZTipTilt();
+               stConfigs(5).fhIsReady = @() ~this.hardware.getDeltaTauPowerPmac().getIsStartedReticleCoarseXYZTipTilt();
                
                stConfigs(6).fhGet = @() this.hardware.getDeltaTauPowerPmac().getXReticleFine();
                stConfigs(6).fhSet = @(dVal) this.hardware.getDeltaTauPowerPmac().setXReticleFine(dVal);
