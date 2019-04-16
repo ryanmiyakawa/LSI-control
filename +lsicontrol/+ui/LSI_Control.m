@@ -37,6 +37,20 @@ classdef LSI_Control < mic.Base
         uiDeviceArrayReticle
         uiDeviceArrayWafer
         
+        % Lock reticle
+        uicbLockReticle
+        uibSetLRZero
+        
+        uitLRInitialRetZ
+        uitLRInitialHS
+        uitLRDeltaRetZ
+        uitLRDeltaHS
+        uitLRConjugateError
+        uipLRDisableZ
+        
+        dLRInitialHS
+        dLRInitialRetZ
+        
         % Bridges
         oHexapodBridges
         oGoniBridges
@@ -178,6 +192,10 @@ classdef LSI_Control < mic.Base
         lIsScanAcquiring = false % whether we're currently in a "scan acquire"
         lIsScanning = false
         
+        lIsConjugateLockEnabled = false
+        dInitialHSSZValue = 0
+        dInitialRetZValue = 0
+        
         % Scan ouput:
         stLastScan
         
@@ -231,7 +249,8 @@ classdef LSI_Control < mic.Base
                         'Waf Crs Z', ...
                         'Do Nothing'};
         ceScanOutputLabels = {'Image capture', 'Image intensity', ...
-            'Background diff', 'Line Pitch', 'Pause 2s', 'Wafer Diode', 'HS Simple Z'};
+            'Background diff', 'Line Pitch', 'Pause 2s', 'Wafer Diode', 'HS Simple Z', ...
+            'HS Cal Z', 'HS Cal Rx', 'HS Cal Ry', 'Image caputure lock conjugate'};
     end
     
     properties (Access = private)
@@ -291,6 +310,10 @@ classdef LSI_Control < mic.Base
         end
         
         function initComm(this)
+             % Instantiate drift monitor immediately, although don't connect
+            % yet
+            this.apiMFDriftMonitor = this.hardware.getMfDriftMonitorMiddleware();
+            
             ceVararginCommandToggle = {...
                 'cTextTrue', 'Disconnect', ...
                 'cTextFalse', 'Connect' ...
@@ -304,7 +327,15 @@ classdef LSI_Control < mic.Base
                 'lShowLabels', false, ...
                 'lShowDevice', false, ...
                 'lShowInitButton', false, ...
-                'cName', 'delta-tau-reticle', ...
+                'fhGet', @() this.hardware.getIsConnectedDeltaTauPowerPmac(), ...
+                'fhSet', @(lVal) mic.Utils.ternEval(...
+                    lVal, ...
+                    @() this.hardware.connectDeltaTauPowerPmac(), ...
+                    @() this.hardware.disconnectDeltaTauPowerPmac() ...
+                ), ...
+                'fhIsVirtual', @() false, ...
+                'lUseFunctionCallbacks', true, ...
+                'cName', 'LSI-delta-tau-reticle', ...
                 'cLabel', 'Delta Tau Reticle' ...
                 );
             this.uiCommSmarActMcsGoni = mic.ui.device.GetSetLogical(...
@@ -346,17 +377,12 @@ classdef LSI_Control < mic.Base
                 'lShowLabels', false, ...
                 'lShowDevice', false, ...
                 'lShowInitButton', false, ...
+                'fhGet', @() this.hardware.getIsConnectedKeithley6482Wafer(), ...
+                'fhSet', @(lVal) this.hardware.setIsConnectedKeithley6482Wafer(lVal), ...
+                'fhIsVirtual', @() false, ...
+                'lUseFunctionCallbacks', true, ...
                 'cName', 'wafer-dose-monitor-lsi', ...
-                'cLabel', 'Wafer Diode'); %,...
-%                 'lUseFunctionCallbacks', true, ...
-%                 'fhGet', @() ~isempty(this.hardware.commKeithley6482Wafer),...
-%                 'fhSet', @(lVal) mic.Utils.ternEval(lVal, ...
-%                                     @this.connectDoseMonitor, ...
-%                                     @this.disconnectDoseMonitor...
-%                                 ),...
-%                 'fhIsInitialized', @()true,... % <-- CA says this is how you use this
-%                 'fhIsVirtual', @false ... % Never virtualize the connection to real hardware
-%                 );
+                'cLabel', 'Wafer Diode'); 
 
             this.uicommMFDriftMonitor = mic.ui.device.GetSetLogical(...
                 'clock', this.clock, ...
@@ -367,7 +393,7 @@ classdef LSI_Control < mic.Base
                 'cName', 'mf-drift-monitor-lsi', ...
                 'cLabel', 'MFDrift Monitor',...
                 'lUseFunctionCallbacks', true, ...
-                'fhGet', @() ~isempty(this.hardware.commMFDriftMonitor),...
+                'fhGet', @() (this.apiMFDriftMonitor.isConnected()),...
                 'fhSet', @(lVal) mic.Utils.ternEval(lVal, ...
                                     @this.connectDriftMonitor, ...
                                     @this.disconnectDriftMontior...
@@ -446,7 +472,29 @@ classdef LSI_Control < mic.Base
                     );
            end
            
+           
+
+            
+            
+           fhReticleGetters = { @() this.hardware.getDeltaTauPowerPmac().getXReticleCoarse(), ...
+               @() this.hardware.getDeltaTauPowerPmac().getYReticleCoarse(), ...
+               @() this.hardware.getDeltaTauPowerPmac().getZReticleCoarse(), ...
+               @() this.hardware.getDeltaTauPowerPmac().getTiltXReticleCoarse(), ...
+               @() this.hardware.getDeltaTauPowerPmac().getTiltYReticleCoarse(), ...
+                @() this.hardware.getDeltaTauPowerPmac().getXReticleFine(), ...
+               @() this.hardware.getDeltaTauPowerPmac().getYReticleFine(), ...
+                    };
+            fhReticleSetters = { @(dVal) this.hardware.getDeltaTauPowerPmac().setXReticleCoarse(dVal), ...
+               @(dVal) this.hardware.getDeltaTauPowerPmac().setYReticleCoarse(dVal), ...
+               @(dVal) this.hardware.getDeltaTauPowerPmac().setZReticleCoarse(dVal), ...
+               @(dVal) this.hardware.getDeltaTauPowerPmac().setTiltXReticleCoarse(dVal), ...
+               @(dVal) this.hardware.getDeltaTauPowerPmac().setTiltYReticleCoarse(dVal), ...
+               @(dVal) this.hardware.getDeltaTauPowerPmac().setXReticleFine(dVal), ...
+               @(dVal) this.hardware.getDeltaTauPowerPmac().setYReticleFine(dVal), ...
+                    }; 
+                
            for k = 1:length(this.cReticleLabels)
+               if (k <= 5)
                this.uiDeviceArrayReticle{k} = mic.ui.device.GetSetNumber( ...
                    'cName', this.cReticleLabels{k}, ...
                    'clock', this.clock, ...
@@ -454,11 +502,49 @@ classdef LSI_Control < mic.Base
                    'lShowLabels', false, ...
                    'lShowStores', false, ...
                    'lValidateByConfigRange', true, ...
+                   'fhGet', fhReticleGetters{k}, ...
+                   'fhSet', fhReticleSetters{k}, ...
+                   'fhIsReady', @() ~this.hardware.getDeltaTauPowerPmac().getIsStartedReticleCoarseXYZTipTilt(), ...
+                   'fhStop', @() this.hardware.getDeltaTauPowerPmac().stopAll(), ...
+                   'fhIsVirtual', @() false, ...
+                   'lUseFunctionCallbacks', true, ...
                    'config', this.uicReticleConfigs{k} ...
                    );
+               else
+                   this.uiDeviceArrayReticle{k} = mic.ui.device.GetSetNumber( ...
+                   'cName', this.cReticleLabels{k}, ...
+                   'clock', this.clock, ...
+                   'cLabel', this.cReticleLabels{k}, ...
+                   'lShowLabels', false, ...
+                   'lShowStores', false, ...
+                   'lValidateByConfigRange', true, ...
+                   'fhGet', fhReticleGetters{k}, ...
+                   'fhSet', fhReticleSetters{k}, ...
+                   'fhIsReady', @() ~this.hardware.getDeltaTauPowerPmac().getIsStartedReticleFineXY(), ...
+                   'fhStop', @() this.hardware.getDeltaTauPowerPmac().stopAll(), ...
+                   'fhIsVirtual', @() false, ...
+                   'lUseFunctionCallbacks', true, ...
+                   'config', this.uicReticleConfigs{k} ...
+                   );
+               end
+                   
            end
            
+             fhWaferGetters = { @() this.hardware.getDeltaTauPowerPmac().getXWaferCoarse(), ...
+               @() this.hardware.getDeltaTauPowerPmac().getYWaferCoarse(), ...
+               @() this.hardware.getDeltaTauPowerPmac().getZWaferCoarse(), ...
+               @() this.hardware.getDeltaTauPowerPmac().getTiltXWaferCoarse(), ...
+               @() this.hardware.getDeltaTauPowerPmac().getTiltYWaferCoarse(), ...
+                    };
+            fhWaferSetters = { @(dVal) this.hardware.getDeltaTauPowerPmac().setXWaferCoarse(dVal), ...
+               @(dVal) this.hardware.getDeltaTauPowerPmac().setYWaferCoarse(dVal), ...
+               @(dVal) this.hardware.getDeltaTauPowerPmac().setZWaferCoarse(dVal), ...
+               @(dVal) this.hardware.getDeltaTauPowerPmac().setTiltXWaferCoarse(dVal), ...
+               @(dVal) this.hardware.getDeltaTauPowerPmac().setTiltYWaferCoarse(dVal), ...
+                    }; 
+           
            for k = 1:length(this.cWaferLabels)
+              
                this.uiDeviceArrayWafer{k} = mic.ui.device.GetSetNumber( ...
                    'cName', this.cWaferLabels{k}, ...
                    'clock', this.clock, ...
@@ -466,6 +552,12 @@ classdef LSI_Control < mic.Base
                    'lShowLabels', false, ...
                    'lShowStores', false, ...
                    'lValidateByConfigRange', true, ...
+                   'fhGet', fhWaferGetters{k}, ...
+                   'fhSet', fhWaferSetters{k}, ...
+                   'fhIsReady', @() ~this.hardware.getDeltaTauPowerPmac().getIsStartedWaferCoarseXYZTipTilt(), ...
+                   'fhStop', @() this.hardware.getDeltaTauPowerPmac().stopAll(), ...
+                   'fhIsVirtual', @() false, ...
+                   'lUseFunctionCallbacks', true, ...
                    'config', this.uicWaferConfigs{k} ...
                    );
            end
@@ -532,8 +624,8 @@ classdef LSI_Control < mic.Base
                     'lShowZero', false, ...
                     'lShowRel',  false, ...
                     'lShowDevice', false, ...
-                    'fhGet', @()this.apiMFDriftMonitor.getSimpleZ(),...
-                    'fhIsReady', @()this.apiMFDriftMonitor.isReady(),...
+                    'fhGet', @()this.apiMFDriftMonitor.getSimpleZ(200),...
+                    'fhIsReady', @()this.apiMFDriftMonitor.isConnected(),...
                     'fhIsVirtual', @()isempty(this.apiMFDriftMonitor) ...
                     );
             
@@ -556,17 +648,15 @@ classdef LSI_Control < mic.Base
                'dWidthUnit', dWidthUnit, ...
                'dWidthVal', dWidthVal, ...
                'dWidthPadUnit', dWidthPadUnit, ...
+               'fhGet', @() this.hardware.getKeithley6482Wafer().read(2), ...
+                'fhIsVirtual', @() false, ...
+                'lUseFunctionCallbacks', true, ...
                'cName', 'Wafer-Diode', ...
                'config', uiConfig, ...
                'cLabel', 'Wafer-Diode', ...
                'lShowZero', false, ...
                'lShowRel',  false, ...
-               'lShowDevice', false ); %, ...
-%                'lUseFunctionCallbacks', true, ...
-%                'fhGet', @()this.apiWaferDoseMonitor.read(2),...
-%                'fhIsReady', @()this.apiWaferDoseMonitor.isReady(),...
-%                'fhIsVirtual',  @()isempty(this.apiWaferDoseMonitor)...
-%             );
+               'lShowDevice', false ); 
             this.uiDoseMonitor.setUnit('nA');
 
             % Init UI for camera control:
@@ -626,6 +716,38 @@ classdef LSI_Control < mic.Base
             this.uicbSubtractBackground = mic.ui.common.Checkbox('cLabel', 'Subtract background');        
         
         
+            this.uicbLockReticle  =  mic.ui.common.Checkbox('cLabel', 'Lock Ret Z to HS',...
+                                               'fhDirectCallback', @(src, evt) this.setLockState() ); 
+            
+            this.uibSetLRZero = mic.ui.common.Button('cText', 'Reset state', 'fhDirectCallback', @(src,evt)this.initializeRetLockValues());
+            
+            this.uitLRInitialRetZ = mic.ui.common.Text('cLabel', 'Initial Reticle Z',...
+                'lShowLabel', true, ...
+                'dFontSize', 18, ... 
+                'cFontWeight', 'bold', ...
+                'cVal', '--');
+            this.uitLRInitialHS = mic.ui.common.Text('cLabel', 'Initial HS Z',...
+                'lShowLabel', true, ...
+                'dFontSize', 18, ... 
+                'cFontWeight', 'bold', ...
+                'cVal', '--');
+            this.uitLRDeltaRetZ = mic.ui.common.Text('cLabel', 'Reticle Z Offset',...
+            'lShowLabel', true, ...
+                'dFontSize', 18, ... 
+                'cFontWeight', 'bold', ...
+                'cVal', '--');
+            this.uitLRDeltaHS = mic.ui.common.Text('cLabel', 'HS Z Offset', ...
+             'lShowLabel', true, ...
+                'dFontSize', 18, ... 
+                'cFontWeight', 'bold', ...
+                'cVal', '--');
+            
+            this.uitLRConjugateError = mic.ui.common.Text('cLabel', 'Conjugate error', ...
+             'lShowLabel', true, ...
+                'dFontSize', 18, ... 
+                'cFontWeight', 'bold', ...
+                'cVal', '--');
+            
             this.uieImageName = mic.ui.common.Edit(...
                 'cLabel', 'Image name' ...
             );
@@ -896,7 +1018,10 @@ classdef LSI_Control < mic.Base
 
         % Set up hardware connect/disconnects:
         function connectDriftMonitor(this)
-            this.apiMFDriftMonitor = this.hardware.getMFDriftMonitor();
+             if ~this.apiMFDriftMonitor.isConnected()
+                this.apiMFDriftMonitor.connect();
+             end
+            
         end
         
         function connectDoseMonitor(this)
@@ -917,8 +1042,11 @@ classdef LSI_Control < mic.Base
         end
         
         function disconnectDriftMontior(this)
-            this.hardware.deleteMFDriftMonitor();
-            this.apiMFDriftMonitor = [];
+             if this.apiMFDriftMonitor.isConnected()
+                this.apiMFDriftMonitor.disconnect();
+             end
+
+            
         end
         
         function disconnectDoseMonitor(this)
@@ -1076,29 +1204,29 @@ classdef LSI_Control < mic.Base
             this.apiGoni = [];
         end
         
-        function setReticleAxisDevice(this, device, index)
-            this.uiDeviceArrayReticle{index}.setDevice(device);
-            this.uiDeviceArrayReticle{index}.turnOn();
-            this.uiDeviceArrayReticle{index}.syncDestination();
-        end
-        
-        
-        function disconnectReticleAxisDevice(this, index)
-            this.uiDeviceArrayReticle{index}.turnOff();
-            this.uiDeviceArrayReticle{index}.setDevice([]);
-        end
-        
-        function setWaferAxisDevice(this, device, index)
-            this.uiDeviceArrayWafer{index}.setDevice(device);
-            this.uiDeviceArrayWafer{index}.turnOn();
-            this.uiDeviceArrayWafer{index}.syncDestination();
-        end
-        
-        
-        function disconnectWaferAxisDevice(this, index)
-            this.uiDeviceArrayWafer{index}.turnOff();
-            this.uiDeviceArrayWafer{index}.setDevice([]);
-        end
+%         function setReticleAxisDevice(this, device, index)
+%             this.uiDeviceArrayReticle{index}.setDevice(device);
+%             this.uiDeviceArrayReticle{index}.turnOn();
+%             this.uiDeviceArrayReticle{index}.syncDestination();
+%         end
+%         
+%         
+%         function disconnectReticleAxisDevice(this, index)
+%             this.uiDeviceArrayReticle{index}.turnOff();
+%             this.uiDeviceArrayReticle{index}.setDevice([]);
+%         end
+%         
+%         function setWaferAxisDevice(this, device, index)
+%             this.uiDeviceArrayWafer{index}.setDevice(device);
+%             this.uiDeviceArrayWafer{index}.turnOn();
+%             this.uiDeviceArrayWafer{index}.syncDestination();
+%         end
+%         
+%         
+%         function disconnectWaferAxisDevice(this, index)
+%             this.uiDeviceArrayWafer{index}.turnOff();
+%             this.uiDeviceArrayWafer{index}.setDevice([]);
+%         end
         
 %% IMAGE ACQUISITION
         
@@ -1350,7 +1478,7 @@ classdef LSI_Control < mic.Base
             end
             
             % Add DMI reticle x and y values:
-            if isempty(this.apiMFDriftMonitor)
+            if (~this.apiMFDriftMonitor.isConnected())
                 stLog.DMIRetX = 'off';
                 stLog.DMIRetY = 'off';
                 stLog.HSZ = 'off';
@@ -1358,7 +1486,7 @@ classdef LSI_Control < mic.Base
                  this.apiMFDriftMonitor.forceUpdate();
                  stLog.DMIRetX = sprintf('%0.10f', this.apiMFDriftMonitor.getDMIValue(1)); 
                  stLog.DMIRetY = sprintf('%0.10f', this.apiMFDriftMonitor.getDMIValue(2)); 
-                 stLog.HSZ = sprintf('%0.10f', this.apiMFDriftMonitor.getSimpleZ()); 
+                 stLog.HSZ = sprintf('%0.10f', this.apiMFDriftMonitor.getSimpleZ(200)); 
             end
            
             
@@ -1715,7 +1843,99 @@ classdef LSI_Control < mic.Base
                  end
              end
         end
-            
+%% Reticle lock:
+function setLockState(this)
+    % First check if we have access to ppmac and mfdriftmonitor
+    if ~this.isRetLockAvailable()
+        msgbox('Please connect PPMAC and MFDriftMonitor before using reticle lock');
+        return
+    end
+    
+    if this.uicbLockReticle.get()
+        % Then start lock
+        
+        % If not initialized, then initialze:
+       % if isempty(this.dLRInitialHS) || isempty(this.dLRInitialRetZ)
+            this.initializeRetLockValues();
+        %end
+        
+        this.startRetLock();
+        
+    else
+        % stop locking
+        this.stopRetLock();
+        
+    end
+end
+function initializeRetLockValues(this)
+     % First check if we have access to ppmac and mfdriftmonitor
+    if ~this.isRetLockAvailable()
+        msgbox('Please connect PPMAC and MFDriftMonitor before using reticle lock');
+        return
+    end
+    
+    % Set lock state values
+    this.dLRInitialHS = this.apiMFDriftMonitor.getSimpleZ(1000);
+    this.dLRInitialRetZ = this.uiDeviceArrayReticle{3}.getValRaw() * 1e6;%raw value has sign flipped from cal value
+    
+    % update display:
+    this.uitLRInitialHS.set(sprintf('%0.1f nm',this.dLRInitialHS ));
+    this.uitLRInitialRetZ.set(sprintf('%0.1f nm',-this.dLRInitialRetZ ));
+end
+
+function lVal = isRetLockAvailable(this)
+   lVal =  this.uiCommDeltaTauPowerPmac.get() &&...
+       this.apiMFDriftMonitor.isConnected();
+end
+
+function startRetLock(this)
+    fprintf('(LSI-control) starting Reticle Z lock\n');
+    this.clock.add(@this.correctReticleConjugate, this.id(), 4);
+    this.uipLRDisableZ.Visible = 'off';
+end
+
+function stopRetLock(this)
+    fprintf('(LSI-control) stopping Reticle Z lock\n');
+    this.clock.remove(this.id());
+    this.uipLRDisableZ.Visible = 'off';
+end
+
+function correctReticleConjugate(this)
+    % Log deltas:
+     % Set lock state values
+    dHSVal = this.apiMFDriftMonitor.getSimpleZ(200);
+    dRetZVal = -this.uiDeviceArrayReticle{3}.getValRaw() * 1e6; %raw value has sign flipped from cal value
+    
+    dDeltaHSVal = dHSVal - this.dLRInitialHS;
+    dDeltaRetZVal = (dRetZVal + this.dLRInitialRetZ);
+    
+    % update deltas:
+    this.uitLRDeltaRetZ.set(sprintf('%0.1f nm',  dDeltaRetZVal));
+    this.uitLRDeltaHS.set(sprintf('%0.1f nm',  dDeltaHSVal));
+         
+    % now perform correction:
+    dNewRetVal = (-this.dLRInitialRetZ - dDeltaHSVal*25) / 1e6;
+
+    this.uiDeviceArrayReticle{3}.setDestRaw(-dNewRetVal);
+    this.uiDeviceArrayReticle{3}.moveToDest();
+    
+    pause(0.5);
+    % Recalculate and update conjugate error:
+    dHSVal = this.apiMFDriftMonitor.getSimpleZ(200);
+    dRetZVal = this.uiDeviceArrayReticle{3}.getValRaw() * 1e6;%raw value has sign flipped from cal value
+    
+    dDeltaHSVal = dHSVal - this.dLRInitialHS;
+    dDeltaRetZVal = dRetZVal - this.dLRInitialRetZ;
+    
+    dConjugateError = -dDeltaRetZVal/25 + dDeltaHSVal;
+    this.uitLRConjugateError.set(sprintf('%0.1f nm', dConjugateError ));
+     
+
+
+end
+
+
+
 %% SCAN METHODS
 
 % State array needs to be structure with property values
@@ -1796,17 +2016,32 @@ classdef LSI_Control < mic.Base
             
             % validate output conditions
             switch u8OutputIdx
-                case {1, 2, 3, 4} % Camera output
+                case {1, 2, 3, 4, 11} % Camera output
                    if isempty(this.apiCamera)
                        msgbox('No Camera available for image acquisition')
                        return
                    end
             end
             
+            % Prepare conjugate locking
+            if u8OutputIdx == 11
+                this.lIsConjugateLockEnabled = true;
+                
+                
+                dUnit = this.uiDeviceArrayReticle{3}.getUnit().name;
+                dRetZVal = this.uiDeviceArrayReticle{3}.getValCal(dUnit);
+                dHSVal = this.apiMFDriftMonitor.getSimpleZ(200);
+                fprintf('(LSI-Control) Initializing conjugate locking\n');
+                fprintf('\tRet Z initial val: %0.9f\n', dRetZVal);
+                fprintf('\tHS Z initial val: %0.3f\n', dHSVal);
+                this.dInitialRetZValue = dRetZVal;
+                this.dInitialHSSZValue = dHSVal;
+            end
+            
             % Set series number:
             
             switch u8OutputIdx
-                case {1, 4} % Any time image series should be saved
+                case {1, 4, 11} % Any time image series should be saved
                    if isempty(this.apiCamera)
                        msgbox('No Camera available for image acquisition')
                        return
@@ -1854,6 +2089,9 @@ classdef LSI_Control < mic.Base
             
             this.scanHandler.stop();
             this.lIsScanning = false;
+            this.lIsConjugateLockEnabled = false;
+            this.dInitialHSSZValue = 0;
+            this.dInitialRetZValue = 0;
         end
         
         function updateScanProgress(this)
@@ -1920,6 +2158,18 @@ classdef LSI_Control < mic.Base
                         this.uiDeviceArrayWafer{dAxis - 15}.moveToDest();
                     case 19 % do nothing
                        
+                end
+            end
+            
+            if this.lIsConjugateLockEnabled
+                % correct Reticle Z 
+                dCurrentHSSZValue = this.apiMFDriftMonitor.getSimpleZ(200);
+                dGratingOffset = dCurrentHSSZValue - this.dInitialHSSZValue;
+                if (dGratingOffset > 1.5) %nm
+                    dRetOffset = dGratingOffset * 25 * 1e-6; % nm
+                    dNewRetConjugateLockedPos = this.dInitialRetZValue - dRetOffset;
+                    this.uiDeviceArrayReticle{3}.setDestCal(dNewRetConjugateLockedPos);
+                    this.uiDeviceArrayReticle{3}.moveToDest();
                 end
             end
             
@@ -2066,7 +2316,7 @@ classdef LSI_Control < mic.Base
             dAcquiredValue = 1;
             
             switch outputIdx
-                case {1, 2, 3, 4} % Image caputre
+                case {1, 2, 3, 4, 11} % Image caputre
                     % For getting image data, Scan is done acquiring when
                     % we set the lIsScanAcquiring boolean to false in
                     % 'onSaveImage'
@@ -2083,6 +2333,11 @@ classdef LSI_Control < mic.Base
                     
                 case 7 % HS Simple Z
                     dAcquiredValue = this.uiHSSimpleZ.getValRaw();
+                    lAcquisitionFinished = ~this.lIsScanAcquiring;
+                    
+                case {8, 9, 10} % HS Cal Z, Rx, Ry
+                    dHSChannel = 11 - outputIdx;
+                    dAcquiredValue = this.apiMFDriftMonitor.getHSValue(dHSChannel);
                     lAcquisitionFinished = ~this.lIsScanAcquiring;
                     
             end
@@ -2124,6 +2379,10 @@ classdef LSI_Control < mic.Base
         
         function onScanComplete(this, dInitialState, fhSetState)
             this.lIsScanning = false;
+            this.lIsConjugateLockEnabled = false;
+            this.dInitialHSSZValue = 0;
+            this.dInitialRetZValue = 0;
+            
             % Reset to initial state on complete
             fhSetState([], dInitialState);
             
@@ -2133,6 +2392,10 @@ classdef LSI_Control < mic.Base
         
         function onScanAbort(this, dInitialState, fhSetState, fhIsAtState)
             this.lIsScanning = false;
+            this.lIsConjugateLockEnabled = false;
+            this.dInitialHSSZValue = 0;
+            this.dInitialRetZValue = 0;
+            
             % Reset to inital state on abort, but wait for scan to complete
             % current move before resetting:
             dafScanAbort = mic.DeferredActionScheduler(...
@@ -2509,6 +2772,15 @@ classdef LSI_Control < mic.Base
             this.uiSLReticle.build(this.hpPositionRecall, 10, 200, 340, 188);
             this.uiSLReticleFine.build(this.hpPositionRecall, 10, 390, 340, 188);
             
+            % Reticle locking:
+            this.uicbLockReticle.build(this.hpPositionRecall, 10, 590, 120, 30);
+            this.uibSetLRZero.build(this.hpPositionRecall, 150, 590, 80, 30);
+            
+            this.uitLRInitialRetZ.build(this.hpPositionRecall, 10, 630, 80, 30);
+            this.uitLRInitialHS.build(this.hpPositionRecall, 150, 630, 80, 30);
+            this.uitLRDeltaRetZ.build(this.hpPositionRecall, 10, 670, 80, 30);
+            this.uitLRDeltaHS.build(this.hpPositionRecall, 150, 670, 80, 30);
+            this.uitLRConjugateError.build(this.hpPositionRecall, 10, 710, 80, 30);
             
             % Stage UI elements
             dAxisPos = 30;
@@ -2541,6 +2813,19 @@ classdef LSI_Control < mic.Base
             for k = 1:length(this.cReticleLabels)
                 this.uiDeviceArrayReticle{k}.build(this.hpStageControls, ...
                     dLeft, dAxisPos);
+                if (k == 3)
+                    this.uipLRDisableZ = uipanel(...
+                        'Parent', this.hpStageControls,...
+                        'Units', 'pixels',...
+                        'FontWeight', 'Bold',...
+                        'Clipping', 'on',...
+                        'BorderWidth',0, ...
+                        'BackgroundColor',  [1 0.300 0.300, 0.3], ...
+                        'Visible', 'off', ...
+                        'Position', [dLeft, 5+ this.hpStageControls.Position(4) - dAxisPos - this.dMultiAxisSeparation...
+                        , 25, 25] ...
+                        );
+                end
                 if (k == 5)
                     dAxisPos = dAxisPos + this.dMultiAxisSeparation/2;
                 end
@@ -2647,6 +2932,15 @@ classdef LSI_Control < mic.Base
             end
         end
         
+        function delete(this)
+            
+            % Clean up clock tasks
+            if isvalid(this.clock) && ...
+                    this.clock.has(this.id())
+                % this.msg('Axis.delete() removing clock task');
+                this.clock.remove(this.id());
+            end
+        end
       
         
         function onToggleAllChange(this, src, evt)
