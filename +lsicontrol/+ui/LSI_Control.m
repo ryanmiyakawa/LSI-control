@@ -19,13 +19,11 @@ classdef LSI_Control < mic.Base
         % Comm handles:
          % {mic.ui.device.GetSetLogical 1x1}
         
-        uiCommDeltaTauPowerPmac
         uiCommSmarActMcsGoni
         uiCommSmarActSmarPod
         uiCommPIMTECamera
         
         uicommWaferDoseMonitor
-        uicommMFDriftMonitor
         
         
         % Instruments handle
@@ -311,33 +309,13 @@ classdef LSI_Control < mic.Base
         end
         
         function initComm(this)
-             % Instantiate drift monitor immediately, although don't connect
-            % yet
-            this.apiMFDriftMonitor = this.hardware.getMfDriftMonitorMiddleware();
-            
+             
             ceVararginCommandToggle = {...
                 'cTextTrue', 'Disconnect', ...
                 'cTextFalse', 'Connect' ...
             };
 
-            this.uiCommDeltaTauPowerPmac = mic.ui.device.GetSetLogical(...
-                'clock', this.clock, ...
-                'ceVararginCommandToggle', ceVararginCommandToggle, ...
-                'dWidthName', 130, ...
-                'lShowLabels', false, ...
-                'lShowDevice', false, ...
-                'lShowInitButton', false, ...
-                'fhGet', @() this.hardware.getIsConnectedDeltaTauPowerPmac(), ...
-                'fhSet', @(lVal) mic.Utils.ternEval(...
-                    lVal, ...
-                    @() this.hardware.connectDeltaTauPowerPmac(), ...
-                    @() this.hardware.disconnectDeltaTauPowerPmac() ...
-                ), ...
-                'fhIsVirtual', @() false, ...
-                'lUseFunctionCallbacks', true, ...
-                'cName', 'LSI-delta-tau-reticle', ...
-                'cLabel', 'Delta Tau Reticle' ...
-                );
+            
             this.uiCommSmarActMcsGoni = mic.ui.device.GetSetLogical(...
                 'clock', this.clock, ...
                 'ceVararginCommandToggle', ceVararginCommandToggle, ...
@@ -386,23 +364,7 @@ classdef LSI_Control < mic.Base
                 'cLabel', 'Keithley 6482 (Wafer)' ...
             );
 
-            this.uicommMFDriftMonitor = mic.ui.device.GetSetLogical(...
-                'clock', this.clock, ...
-                'dWidthName', 85, ...
-                'lShowLabels', false, ...
-                'lShowDevice', false, ...
-                'lShowInitButton', false, ...
-                'cName', 'mf-drift-monitor-lsi', ...
-                'cLabel', 'MFDrift Monitor',...
-                'lUseFunctionCallbacks', true, ...
-                'fhGet', @() (this.apiMFDriftMonitor.isConnected()),...
-                'fhSet', @(lVal) mic.Utils.ternEval(lVal, ...
-                                    @this.connectDriftMonitor, ...
-                                    @this.disconnectDriftMontior...
-                                ),...
-                'fhIsInitialized', @()true,...
-                'fhIsVirtual', @false ...% Never virtualize the connection to real hardware
-                );
+            
         end
         
         
@@ -594,9 +556,9 @@ classdef LSI_Control < mic.Base
                     'lShowZero', false, ...
                     'lShowRel',  false, ...
                     'lShowDevice', false, ...
-                    'fhGet', @()this.apiMFDriftMonitor.getDMIValue(u8Channel),...
-                    'fhIsReady', @()this.apiMFDriftMonitor.isReady(),...
-                    'fhIsVirtual', @()isempty(this.apiMFDriftMonitor) ...
+                    'fhGet', @()this.hardware.getMfDriftMonitorMiddleware().getDMIValue(u8Channel),...
+                    'fhIsReady', @() this.hardware.getMfDriftMonitorMiddleware().isReady(),...
+                    'fhIsVirtual', @() false ...
                     );
                 
            end
@@ -623,9 +585,9 @@ classdef LSI_Control < mic.Base
                     'lShowZero', false, ...
                     'lShowRel',  false, ...
                     'lShowDevice', false, ...
-                    'fhGet', @()this.apiMFDriftMonitor.getSimpleZ(200),...
-                    'fhIsReady', @()this.apiMFDriftMonitor.isConnected(),...
-                    'fhIsVirtual', @()isempty(this.apiMFDriftMonitor) ...
+                    'fhGet', @()this.hardware.getMfDriftMonitorMiddleware().getSimpleZ(200),...
+                    'fhIsReady', @() this.hardware.getMfDriftMonitorMiddleware().isReady(),...
+                    'fhIsVirtual', @() false ...
                     );
             
            
@@ -1016,13 +978,7 @@ classdef LSI_Control < mic.Base
 
 %% INITIALIZE HARDWARE DEVICES
 
-        % Set up hardware connect/disconnects:
-        function connectDriftMonitor(this)
-             if ~this.apiMFDriftMonitor.isConnected()
-                this.apiMFDriftMonitor.connect();
-             end
-            
-        end
+        
         
         function connectDoseMonitor(this)
             this.apiWaferDoseMonitor = this.hardware.getKeithleyWafer();
@@ -1041,13 +997,7 @@ classdef LSI_Control < mic.Base
             this.uiDoseMonitor.setDevice([]);
         end
         
-        function disconnectDriftMontior(this)
-             if this.apiMFDriftMonitor.isConnected()
-                this.apiMFDriftMonitor.disconnect();
-             end
-
-            
-        end
+       
         
         function disconnectDoseMonitor(this)
             this.hardware.deleteKeithleyWafer();
@@ -1478,16 +1428,12 @@ classdef LSI_Control < mic.Base
             end
             
             % Add DMI reticle x and y values:
-            if (~this.apiMFDriftMonitor.isConnected())
-                stLog.DMIRetX = 'off';
-                stLog.DMIRetY = 'off';
-                stLog.HSZ = 'off';
-            else
-                 this.apiMFDriftMonitor.forceUpdate();
-                 stLog.DMIRetX = sprintf('%0.10f', this.apiMFDriftMonitor.getDMIValue(1)); 
-                 stLog.DMIRetY = sprintf('%0.10f', this.apiMFDriftMonitor.getDMIValue(2)); 
-                 stLog.HSZ = sprintf('%0.10f', this.apiMFDriftMonitor.getSimpleZ(200)); 
-            end
+            
+                 this.hardware.getMfDriftMonitorMiddleware().forceUpdate();
+                 stLog.DMIRetX = sprintf('%0.10f', this.hardware.getMfDriftMonitorMiddleware().getDMIValue(1)); 
+                 stLog.DMIRetY = sprintf('%0.10f', this.hardware.getMfDriftMonitorMiddleware().getDMIValue(2)); 
+                 stLog.HSZ = sprintf('%0.10f', this.hardware.getMfDriftMonitorMiddleware().getSimpleZ(200)); 
+            
            
             
         end
@@ -1875,7 +1821,7 @@ function initializeRetLockValues(this)
     end
     
     % Set lock state values
-    this.dLRInitialHS = this.apiMFDriftMonitor.getSimpleZ(1000);
+    this.dLRInitialHS = this.hardware.getMfDriftMonitorMiddleware().getSimpleZ(1000);
     this.dLRInitialRetZ = this.uiDeviceArrayReticle{3}.getValRaw() * 1e6;%raw value has sign flipped from cal value
     
     % update display:
@@ -1884,8 +1830,7 @@ function initializeRetLockValues(this)
 end
 
 function lVal = isRetLockAvailable(this)
-   lVal =  this.uiCommDeltaTauPowerPmac.get() &&...
-       this.apiMFDriftMonitor.isConnected();
+   lVal =  true;
 end
 
 function startRetLock(this)
@@ -1903,7 +1848,7 @@ end
 function correctReticleConjugate(this)
     % Log deltas:
      % Set lock state values
-    dHSVal = this.apiMFDriftMonitor.getSimpleZ(200);
+    dHSVal = this.hardware.getMfDriftMonitorMiddleware().getSimpleZ(200);
     dRetZVal = -this.uiDeviceArrayReticle{3}.getValRaw() * 1e6; %raw value has sign flipped from cal value
     
     dDeltaHSVal = dHSVal - this.dLRInitialHS;
@@ -1921,7 +1866,7 @@ function correctReticleConjugate(this)
     
     pause(0.5);
     % Recalculate and update conjugate error:
-    dHSVal = this.apiMFDriftMonitor.getSimpleZ(200);
+    dHSVal = this.hardware.getMfDriftMonitorMiddleware().getSimpleZ(200);
     dRetZVal = this.uiDeviceArrayReticle{3}.getValRaw() * 1e6;%raw value has sign flipped from cal value
     
     dDeltaHSVal = dHSVal - this.dLRInitialHS;
@@ -2030,7 +1975,7 @@ end
                 
                 dUnit = this.uiDeviceArrayReticle{3}.getUnit().name;
                 dRetZVal = this.uiDeviceArrayReticle{3}.getValCal(dUnit);
-                dHSVal = this.apiMFDriftMonitor.getSimpleZ(200);
+                dHSVal = this.hardware.getMfDriftMonitorMiddleware().getSimpleZ(200);
                 fprintf('(LSI-Control) Initializing conjugate locking\n');
                 fprintf('\tRet Z initial val: %0.9f\n', dRetZVal);
                 fprintf('\tHS Z initial val: %0.3f\n', dHSVal);
@@ -2163,7 +2108,7 @@ end
             
             if this.lIsConjugateLockEnabled
                 % correct Reticle Z 
-                dCurrentHSSZValue = this.apiMFDriftMonitor.getSimpleZ(200);
+                dCurrentHSSZValue = this.hardware.getMfDriftMonitorMiddleware().getSimpleZ(200);
                 dGratingOffset = dCurrentHSSZValue - this.dInitialHSSZValue;
                 if (dGratingOffset > 1.5) %nm
                     dRetOffset = dGratingOffset * 25 * 1e-6; % nm
@@ -2339,7 +2284,7 @@ end
                     
                 case {8, 9, 10} % HS Cal Z, Rx, Ry
                     dHSChannel = 11 - outputIdx;
-                    dAcquiredValue = this.apiMFDriftMonitor.getHSValue(dHSChannel);
+                    dAcquiredValue = this.hardware.getMfDriftMonitorMiddleware().getHSValue(dHSChannel);
                     lAcquisitionFinished = ~this.lIsScanAcquiring;
                     
             end
@@ -2810,7 +2755,6 @@ end
 %             end
 
             % PPMac reticle and wafer
-            this.uiCommDeltaTauPowerPmac.build(this.hpStageControls,  dLeft, dAxisPos - 7);
             dAxisPos = dAxisPos + 20;
             for k = 1:length(this.cReticleLabels)
                 this.uiDeviceArrayReticle{k}.build(this.hpStageControls, ...
@@ -2846,7 +2790,6 @@ end
             
             this.uicommWaferDoseMonitor.build(this.hpStageControls,  dLeft, dAxisPos - 7);
             
-             this.uicommMFDriftMonitor.build(this.hpStageControls,  dLeft + 230, dAxisPos - 7);
              
              
             dAxisPos = dAxisPos + 20;
